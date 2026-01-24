@@ -19,7 +19,8 @@
       "Bash(dir \"C:\\\\Users\\\\droli\\\\OneDrive\\\\바탕 화면\\\\*.png\")",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(python -m http.server:*)"
+      "Bash(python -m http.server:*)",
+      "Bash(copy:*)"
     ]
   }
 }
