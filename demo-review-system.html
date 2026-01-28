@@ -111,8 +111,9 @@
 
     const SCORES = ['5.0', '4.5', '4.0', '3.5', '3.0', '2.5', '2.0', '1.5', '1.0'];
 
-    // 이메일/폴더명 → OP명 매핑
+    // 이메일/폴더명 → OP명 매핑 (확장됨)
     const EMAIL_TO_OP = {
+      // 기존 매핑
       'tos92@naver.com': 'To.S',
       'dctsung@naver.com': 'ES2',
       'kino1229@naver.com': 'YJH',
@@ -125,10 +126,23 @@
       'bcabox@gmail.com': 'BEN',
       'colin.hembus@eavesmusicgroup.com': 'EavesMusic',
       'atcmusic.ar.0328@gmail.com': 'ART.M',
+      // 새로운 매핑 (NEXZ JAPAN 프로젝트 등)
+      'eunae.solcire@gmail.com': 'Solcire',
+      'smobmusicofficial@gmail.com': 'SMOB',
+      'oskar.larsson@glmusic.dk': 'GL Music',
+      'hjkim@musiccombine.com': 'Music Combine',
+      'purpl78@hanmail.net': 'Individual',
+      'modern_sound@naver.com': 'Modern Sound',
+      'victoria.ree@concord.com': 'Concord',
+      'info@wavecandy.com': 'Wavecandy',
+      // 추가 국제 퍼블리셔
+      'soundgraphics': 'SoundGraphics',
+      'admin@soundgraphics.co.kr': 'SoundGraphics',
     };
 
-    // 작가명 → OP명 매핑
+    // 작가명 → OP명 매핑 (확장됨)
     const COMPOSER_TO_OP = {
+      // 기존 매핑
       'onetop': 'OneTop',
       'zeenan': 'OneTop',
       'andy': 'OneTop',
@@ -138,9 +152,11 @@
       'june': 'ES2',
       'kwh': 'ES2',
       'andreas': 'ES2',
+      '서의성': 'ES2',
       '전근화': 'JGH',
       'weeky1': 'JGH',
       'bt': 'JGH',
+      '정진욱': 'JGH',
       '유정훈': 'YJH',
       '박민우': 'YJH',
       '박현규': 'PHK',
@@ -163,6 +179,45 @@
       'filo ebid': 'JM',
       'josue vergara': 'JM',
       'pablo peset': 'JM',
+      // 새로운 매핑 (Solcire, SMOB, GL Music 등)
+      'chris alice': 'Solcire',
+      '영원희': 'Solcire',
+      'sisyphus': 'Solcire',
+      'tan': 'Solcire',
+      'karrinator': 'Solcire',
+      '케빈오빠': 'Solcire',
+      'mogt': 'Solcire',
+      'yusu': 'Solcire',
+      'solcire': 'Solcire',
+      '쏠시레': 'Solcire',
+      'smob': 'SMOB',
+      "nu'maker": 'SMOB',
+      'i-nori': 'SMOB',
+      // GL Music (북유럽)
+      'gusten dahlqvist': 'GL Music',
+      'cosmos': 'GL Music',
+      'jes meinertz': 'GL Music',
+      'johs': 'GL Music',
+      'deekay': 'GL Music',
+      'david west': 'GL Music',
+      'lasse lindorff': 'GL Music',
+      'svend gudiksen': 'GL Music',
+      'mats valentin': 'GL Music',
+      'jade ell': 'GL Music',
+      'mattias kolstrup': 'GL Music',
+      // Music Combine
+      '뮤직컴바인': 'Music Combine',
+      'music combine': 'Music Combine',
+      // SoundGraphics
+      'soundgraphics': 'SoundGraphics',
+      'sg': 'SoundGraphics',
+      // Concord
+      'concord': 'Concord',
+      // 추가 한국 작곡가
+      '손연성': 'Individual',
+      '주현민': 'Individual',
+      '박수석': 'Individual',
+      '이성혁': 'JGH',
     };
 
     // 이메일에서 OP명 추출
@@ -207,17 +262,47 @@
       return words.map(w => w[0].toUpperCase()).join('');
     };
 
-    // 폴더 경로에서 아티스트명 추출
+    // 폴더 경로에서 아티스트명 추출 (개선됨)
     const extractArtistFromPath = (path) => {
       const patterns = [
+        // "NEXZ(일본앨범) 수록곡 전체 DEMO" → NEXZ
+        /([가-힣a-zA-Z0-9]+)\s*\([^)]+\)\s*(?:수록곡\s*)?전체\s*DEMO/i,
+        // "이창섭 전체 DEMO" → 이창섭
         /([가-힣a-zA-Z]+)\s*전체\s*DEMO/i,
+        // "NEXZ JAPAN 데모" → NEXZ JAPAN
+        /\[.*?\]\s*([가-힣a-zA-Z\s]+)\s*데모/i,
+        // 일반 DEMO 패턴
         /([가-힣a-zA-Z]+)\s*DEMO/i,
       ];
       for (const pattern of patterns) {
         const match = path.match(pattern);
-        if (match) return match[1];
+        if (match) return match[1].trim();
       }
       return '';
+    };
+
+    // 폴더 경로에서 업로드 날짜 추출 (새로운 함수)
+    const extractDateFromPath = (path) => {
+      // 패턴 1: (2026.01.28) 또는 (2026-01-28) 형식
+      const parenDateMatch = path.match(/\((\d{4})[.\-](\d{2})[.\-](\d{2})\)/);
+      if (parenDateMatch) {
+        return `${parenDateMatch[1]}-${parenDateMatch[2]}-${parenDateMatch[3]}`;
+      }
+
+      // 패턴 2: 26.01.27 형식 (YY.MM.DD)
+      const shortDateMatch = path.match(/(\d{2})[.\-](\d{2})[.\-](\d{2})/);
+      if (shortDateMatch) {
+        const year = parseInt(shortDateMatch[1]) < 50 ? `20${shortDateMatch[1]}` : `19${shortDateMatch[1]}`;
+        return `${year}-${shortDateMatch[2]}-${shortDateMatch[3]}`;
+      }
+
+      // 패턴 3: 2026-01-28 또는 2026.01.28 형식
+      const fullDateMatch = path.match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
+      if (fullDateMatch) {
+        return `${fullDateMatch[1]}-${fullDateMatch[2]}-${fullDateMatch[3]}`;
+      }
+
+      return null;
     };
 
     // 폴더 경로에서 이메일 추출 (순수 이메일만, _ 앞의 아티스트명 제외)
@@ -272,7 +357,7 @@
       return d.toISOString().split('T')[0];
     };
 
-    // ========== 핵심 파싱 함수 ==========
+    // ========== 핵심 파싱 함수 (확장됨) ==========
     const parseFileName = (filename, folderPath = '') => {
       const nameWithoutExt = filename.replace(/\.(mp3|wav|m4a|flac|aiff)$/i, '');
       let songName = '';
@@ -281,8 +366,9 @@
 
       const email = extractEmailFromPath(folderPath);
       const composerHint = extractComposerHintFromPath(folderPath);
+      const folderOP = extractOPFromFolderPath(folderPath);
 
-      // 패턴 1: _Pitched by MC로 끝나는 파일
+      // 패턴 1: _Pitched by MC로 끝나는 파일 (이미 처리된 파일)
       const pitchedMatch = nameWithoutExt.match(/^(.+?)_([^_]+)_Pitched by MC$/i);
       if (pitchedMatch) {
         songName = pitchedMatch[1].trim();
@@ -309,7 +395,7 @@
         return { songName, composer, opName, email };
       }
 
-      // 패턴 4: Weeky1- 곡명 [Tempo숫자] 장르 형식
+      // 패턴 4: Weeky1- 곡명 [Tempo숫자] 장르 형식 (JGH 스타일)
       const weekyMatch = nameWithoutExt.match(/^Weeky1-\s*(.+?)\s*\[Tempo\d+\]/i);
       if (weekyMatch) {
         songName = weekyMatch[1].trim();
@@ -345,15 +431,17 @@
         return { songName, composer, opName, email };
       }
 
-      // 패턴 8: 곡명 - 작가명 형식 (RON 스타일)
-      const dashMatch = nameWithoutExt.match(/^(.+?)\s*[-–]\s*([A-Z\s]+)$/);
-      if (dashMatch && /^[A-Z\s]+$/.test(dashMatch[2])) {
-        songName = dashMatch[1].trim();
-        composer = dashMatch[2].trim().split(' ').map(w =>
-          w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-        ).join(' ');
-        opName = getOPFromComposer(composer) || getOPFromEmail(email) || 'RON';
-        return { songName, composer, opName, email };
+      // 패턴 8: 곡명 - 작가명 형식 (여러 스타일)
+      const dashComposerMatch = nameWithoutExt.match(/^(.+?)\s*[-–]\s*([A-Za-z\s,]+)$/);
+      if (dashComposerMatch) {
+        const possibleComposer = dashComposerMatch[2].trim();
+        const matchedOP = getOPFromComposer(possibleComposer.toLowerCase());
+        if (matchedOP || /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(possibleComposer)) {
+          songName = dashComposerMatch[1].trim();
+          composer = possibleComposer;
+          opName = matchedOP || getOPFromEmail(email) || folderOP || '';
+          return { songName, composer, opName, email };
+        }
       }
 
       // 패턴 9: 오영빈_날 떠나지마_74_팝 발라드 형식
@@ -365,56 +453,228 @@
         return { songName, composer, opName, email };
       }
 
-      // 패턴 10: 곡명_OP명 형식
-      const simpleMatch = nameWithoutExt.match(/^(.+?)_([A-Za-z.]+)$/);
-      if (simpleMatch && simpleMatch[2].length <= 10) {
-        songName = simpleMatch[1].trim();
-        opName = simpleMatch[2].trim();
+      // 패턴 10: 곡명 DEMO_OP명 또는 곡명_OP명 형식 (Solcire 스타일)
+      // 예: "POP BEAT DEMO_Solcire Music.mp3" → 곡명: "POP BEAT", OP: "Solcire"
+      const demoOPMatch = nameWithoutExt.match(/^(.+?)\s*(?:DEMO[#]?)?_([A-Za-z\s.]+)$/i);
+      if (demoOPMatch) {
+        let rawSongName = demoOPMatch[1].trim();
+        const rawOP = demoOPMatch[2].trim();
+        // 곡명에서 DEMO 제거
+        rawSongName = rawSongName.replace(/\s*DEMO[#]?\s*$/i, '').trim();
+        songName = rawSongName;
+        const matchedOP = getOPFromComposer(rawOP.toLowerCase());
+        opName = matchedOP || rawOP;
         composer = composerHint || '';
         return { songName, composer, opName, email };
       }
 
-      // 패턴 11: 단순 곡명만 있는 경우 (DREAM ABOUT YOU 등)
-      if (/^[A-Z\s'´]+$/i.test(nameWithoutExt)) {
+      // 패턴 11: 곡명_T숫자_Key_가이드보컬 형식
+      // 예: "Saturn_T94_Gkey_가이드보컬.mp3" → 곡명: "Saturn"
+      const tempoKeyMatch = nameWithoutExt.match(/^(.+?)_T\d+_[A-G][#b]?(?:key|m)?/i);
+      if (tempoKeyMatch) {
+        songName = tempoKeyMatch[1].trim();
+        opName = getOPFromEmail(email) || folderOP || '';
+        composer = composerHint || '';
+        return { songName, composer, opName, email };
+      }
+
+      // 패턴 12: 곡명_장르_숫자_DEMO 형식
+      // 예: "있잖아 (AHMOLLA)_HIP&GEN-Z_192_DEMO.mp3" → 곡명: "있잖아 (AHMOLLA)" 또는 "있잖아"
+      const genreNumDemoMatch = nameWithoutExt.match(/^(.+?)_[A-Za-z&-]+_\d+_DEMO$/i);
+      if (genreNumDemoMatch) {
+        songName = genreNumDemoMatch[1].trim();
+        opName = getOPFromEmail(email) || folderOP || '';
+        composer = composerHint || '';
+        return { songName, composer, opName, email };
+      }
+
+      // 패턴 13: 곡명#_작가명 형식
+      // 예: "눈부신 사랑 DEMO#_박수석.mp3" → 곡명: "눈부신 사랑"
+      const hashDemoMatch = nameWithoutExt.match(/^(.+?)\s*DEMO[#]?_([가-힣A-Za-z\s]+)$/i);
+      if (hashDemoMatch) {
+        songName = hashDemoMatch[1].trim();
+        composer = hashDemoMatch[2].trim();
+        opName = getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
+        return { songName, composer, opName, email };
+      }
+
+      // 패턴 14: 단순 곡명만 있는 경우 (영문 대문자)
+      if (/^[A-Z\s'´!?]+$/i.test(nameWithoutExt) && nameWithoutExt.length > 2) {
         songName = nameWithoutExt.trim();
-        opName = getOPFromEmail(email) || '';
-        composer = '';
-        return { songName, composer, opName, email };
-      }
-
-      // 패턴 12: 이창섭 Demo가 포함된 파일
-      const demoMatch = nameWithoutExt.match(/^(.+?)\s*\(이창섭\s*Demo\)\s*$/i);
-      if (demoMatch) {
-        songName = demoMatch[1].trim();
+        opName = getOPFromEmail(email) || folderOP || '';
         composer = composerHint || '';
-        opName = getOPFromComposer(composerHint) || '';
         return { songName, composer, opName, email };
       }
 
-      // 기본: 파일명 그대로
+      // 패턴 15: 아티스트 Demo가 포함된 파일
+      const artistDemoMatch = nameWithoutExt.match(/^(.+?)\s*\(([가-힣A-Za-z]+)\s*Demo\)\s*$/i);
+      if (artistDemoMatch) {
+        songName = artistDemoMatch[1].trim();
+        composer = composerHint || '';
+        opName = getOPFromComposer(composerHint) || getOPFromEmail(email) || folderOP || '';
+        return { songName, composer, opName, email };
+      }
+
+      // 기본: 파일명 정제
       songName = nameWithoutExt
         .replace(/_BPM\d+/gi, '')
         .replace(/_Tempo\d+/gi, '')
+        .replace(/_T\d+/gi, '')
+        .replace(/\s*DEMO[#]?\s*/gi, ' ')
         .replace(/\s*\[.*?\]\s*/g, ' ')
-        .replace(/\s*\(.*?\)\s*/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
-      opName = getOPFromEmail(email) || '';
+      // 마지막 _ 이후가 OP명일 가능성 체크
+      const lastUnderscoreIdx = songName.lastIndexOf('_');
+      if (lastUnderscoreIdx > 0) {
+        const possibleOP = songName.substring(lastUnderscoreIdx + 1).trim();
+        const matchedOP = getOPFromComposer(possibleOP.toLowerCase());
+        if (matchedOP || (possibleOP.length <= 15 && /^[A-Za-z\s.]+$/.test(possibleOP))) {
+          songName = songName.substring(0, lastUnderscoreIdx).trim();
+          opName = matchedOP || possibleOP;
+        }
+      }
+
+      if (!opName) {
+        opName = getOPFromEmail(email) || folderOP || '';
+      }
       composer = composerHint || '';
 
       return { songName, composer, opName, email };
     };
 
+    // 폴더 경로에서 OP명 추출 (새로운 함수)
+    const extractOPFromFolderPath = (path) => {
+      // [쏠시레뮤직], [SMOB] 등 대괄호 안의 OP명 추출
+      const bracketOPMatch = path.match(/\[([가-힣A-Za-z]+(?:뮤직|Music)?)\]/i);
+      if (bracketOPMatch) {
+        const opHint = bracketOPMatch[1].trim();
+        // 매핑 테이블에서 찾기
+        const matchedOP = getOPFromComposer(opHint.toLowerCase().replace(/뮤직|music/gi, ''));
+        if (matchedOP) return matchedOP;
+        // 그대로 반환
+        return opHint.replace(/뮤직$/i, '').replace(/Music$/i, '').trim();
+      }
+      return '';
+    };
+
+    // 안정화된 입력 컴포넌트 (DemoReviewSystem 외부에 정의하여 리렌더링 방지)
+    // 로컬 상태를 사용하여 타이핑 중 끊김 현상 방지
+    const StableInput = React.memo(({ value, onChange, placeholder, className, type = 'text', readOnly = false }) => {
+      const [localValue, setLocalValue] = useState(value || '');
+      const inputRef = useRef(null);
+      const isComposing = useRef(false);
+
+      // 외부 value가 변경되면 로컬 값 업데이트 (blur 이후나 다른 곡으로 이동 시)
+      useEffect(() => {
+        if (!inputRef.current || document.activeElement !== inputRef.current) {
+          setLocalValue(value || '');
+        }
+      }, [value]);
+
+      const handleChange = (e) => {
+        const newValue = e.target.value;
+        setLocalValue(newValue);
+        // 조합 중이 아닐 때만 업데이트
+        if (!isComposing.current) {
+          onChange(newValue);
+        }
+      };
+
+      const handleCompositionStart = () => {
+        isComposing.current = true;
+      };
+
+      const handleCompositionEnd = (e) => {
+        isComposing.current = false;
+        onChange(e.target.value);
+      };
+
+      const handleBlur = () => {
+        onChange(localValue);
+      };
+
+      return (
+        <input
+          ref={inputRef}
+          type={type}
+          value={localValue}
+          onChange={handleChange}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          onBlur={handleBlur}
+          className={className}
+          placeholder={placeholder}
+          readOnly={readOnly}
+        />
+      );
+    });
+
+    // 안정화된 Textarea 컴포넌트
+    const StableTextarea = React.memo(({ value, onChange, placeholder, className, rows = 2 }) => {
+      const [localValue, setLocalValue] = useState(value || '');
+      const textareaRef = useRef(null);
+      const isComposing = useRef(false);
+
+      useEffect(() => {
+        if (!textareaRef.current || document.activeElement !== textareaRef.current) {
+          setLocalValue(value || '');
+        }
+      }, [value]);
+
+      const handleChange = (e) => {
+        const newValue = e.target.value;
+        setLocalValue(newValue);
+        if (!isComposing.current) {
+          onChange(newValue);
+        }
+      };
+
+      const handleCompositionStart = () => {
+        isComposing.current = true;
+      };
+
+      const handleCompositionEnd = (e) => {
+        isComposing.current = false;
+        onChange(e.target.value);
+      };
+
+      const handleBlur = () => {
+        onChange(localValue);
+      };
+
+      return (
+        <textarea
+          ref={textareaRef}
+          value={localValue}
+          onChange={handleChange}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          onBlur={handleBlur}
+          className={className}
+          placeholder={placeholder}
+          rows={rows}
+        />
+      );
+    });
+
     // 크레딧 입력 컴포넌트 (DemoReviewSystem 외부에 정의하여 리렌더링 방지)
     const CreditTextArea = React.memo(({ textRef }) => {
       const localRef = useRef(null);
+      const [localValue, setLocalValue] = useState('');
+
+      const handleChange = (e) => {
+        const newValue = e.target.value;
+        setLocalValue(newValue);
+        textRef.current = newValue;
+      };
 
       return (
         <textarea
           ref={localRef}
-          defaultValue=""
-          onChange={(e) => { textRef.current = e.target.value; }}
-          onBlur={(e) => { textRef.current = e.target.value; }}
+          value={localValue}
+          onChange={handleChange}
           className="w-full h-64 bg-black/50 text-gray-300 px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500 resize-none mb-4 font-mono text-sm"
           placeholder={`예시:
 
@@ -433,7 +693,7 @@ writers CC, Ron, JJ
       );
     });
 
-    // 크레딧 텍스트 파싱
+    // 크레딧 텍스트 파싱 (개선됨 - 다양한 형식 지원)
     const parseCreditText = (creditText) => {
       const credits = {};
       const lines = creditText.split('\n').map(l => l.trim()).filter(l => l);
@@ -444,7 +704,22 @@ writers CC, Ron, JJ
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // 패턴 1: "곡명.mp3 | Powered by Box" 형식 (Box에서 복사한 형식)
+        // 섹션 헤더 스킵 (타이틀, 수록성 등)
+        if (/^(타이틀|수록성|수록곡|\(타이틀\)|\(수록성\)|##?\s)/i.test(line)) {
+          continue;
+        }
+
+        // 패턴 1: 번호. 곡명 - 작가1, 작가2 형식 (마크다운 리스트)
+        // 예: "1. AEROBATIC PLUM - Chris Alice, 영원희, Sisyphus"
+        const numberedMatch = line.match(/^(\d+)\.\s*(.+?)\s*[-–]\s*(.+)$/);
+        if (numberedMatch) {
+          const songName = numberedMatch[2].trim();
+          const composer = numberedMatch[3].trim();
+          credits[songName.toLowerCase()] = composer;
+          continue;
+        }
+
+        // 패턴 2: "곡명.mp3 | Powered by Box" 형식 (Box에서 복사한 형식)
         const boxMatch = line.match(/^(.+?)\.(mp3|wav|m4a|flac|aiff)\s*\|\s*Powered by Box$/i);
         if (boxMatch) {
           // 이전 곡 저장
@@ -456,13 +731,24 @@ writers CC, Ron, JJ
           continue;
         }
 
-        // 패턴 2: 작곡/작사/편곡/writers로 시작하는 크레딧 라인
+        // 패턴 3: 테이블 형식 (| # | 곡명 | 저작자 |)
+        const tableMatch = line.match(/^\|\s*\d+\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|$/);
+        if (tableMatch) {
+          const songName = tableMatch[1].trim();
+          const composer = tableMatch[2].trim();
+          if (songName && composer && songName !== '곡명' && composer !== '저작자') {
+            credits[songName.toLowerCase()] = composer;
+          }
+          continue;
+        }
+
+        // 패턴 4: 작곡/작사/편곡/writers로 시작하는 크레딧 라인
         const isKoreanCredit = /^(작곡|작사|편곡|writers?|composer|lyricist|arranger)/i.test(line);
 
-        // 패턴 3: 퍼센트(%)가 포함된 크레딧 라인 (Jose Manuel 50% 형식)
+        // 패턴 5: 퍼센트(%)가 포함된 크레딧 라인 (Jose Manuel 50% 형식)
         const hasPercentage = /%/.test(line);
 
-        // 패턴 4: PEERMUSIC이 포함된 라인 (크레딧 정보)
+        // 패턴 6: PEERMUSIC이 포함된 라인 (크레딧 정보)
         const hasPeermusic = /PEERMUSIC/i.test(line);
 
         if (currentSong && (isKoreanCredit || hasPercentage || hasPeermusic)) {
@@ -471,6 +757,7 @@ writers CC, Ron, JJ
             .replace(/^(작곡|작사|편곡|writers?|composer|lyricist|arranger)\s*/i, '')
             .replace(/[:：]\s*/, '')
             .replace(/\s*PEERMUSIC\s*$/i, '') // 끝의 PEERMUSIC 제거
+            .replace(/\s*\d+(\.\d+)?%/g, '') // 퍼센트 정보 제거
             .trim();
           if (creditInfo) {
             currentCredits.push(creditInfo);
@@ -564,6 +851,10 @@ writers CC, Ron, JJ
           const path = file.webkitRelativePath || file.name;
           const parsed = parseFileName(file.name, path);
 
+          // 폴더 경로에서 날짜 추출 시도, 없으면 파일 수정일 사용
+          const extractedDate = extractDateFromPath(path);
+          const uploadDate = extractedDate || formatDate(file.lastModified);
+
           return {
             id: Date.now() + idx + Math.random(),
             곡명: parsed.songName,
@@ -572,7 +863,7 @@ writers CC, Ron, JJ
             이메일: parsed.email,
             원본파일명: file.name,
             원본경로: path,
-            업로드날짜: formatDate(file.lastModified),
+            업로드날짜: uploadDate,
             추가일시: new Date().toISOString()
           };
         });
@@ -859,10 +1150,9 @@ writers CC, Ron, JJ
                 <div className="flex items-center gap-4">
                   <button onClick={() => setView('upload')} className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white">🏠</button>
                   <div>
-                    <input
-                      type="text"
+                    <StableInput
                       value={artistName}
-                      onChange={(e) => setArtistName(e.target.value)}
+                      onChange={(v) => setArtistName(v)}
                       className="text-xl font-bold text-white bg-transparent border-b border-transparent hover:border-gray-600 focus:border-indigo-500 outline-none"
                       placeholder="아티스트명 입력"
                     />
@@ -900,25 +1190,32 @@ writers CC, Ron, JJ
                 <div className="space-y-5">
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-2">저작자 정보</label>
-                    <input type="text" value={currentReview.저작자 ?? currentSong.저작자 ?? ''}
-                      onChange={(e) => handleUpdate('저작자', e.target.value)}
+                    <StableInput
+                      value={currentReview.저작자 ?? currentSong.저작자 ?? ''}
+                      onChange={(v) => handleUpdate('저작자', v)}
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
-                      placeholder="예: OneTop, Zeenan" />
+                      placeholder="예: OneTop, Zeenan"
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">OP명 / 작가명</label>
-                      <input type="text" value={currentReview.OP명 ?? currentSong.OP명 ?? ''}
-                        onChange={(e) => handleUpdate('OP명', e.target.value)}
+                      <StableInput
+                        value={currentReview.OP명 ?? currentSong.OP명 ?? ''}
+                        onChange={(v) => handleUpdate('OP명', v)}
                         className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
-                        placeholder="예: OneTop, SJJ" />
+                        placeholder="예: OneTop, SJJ"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">이메일</label>
-                      <input type="text" value={currentSong.이메일 || ''}
+                      <StableInput
+                        value={currentSong.이메일 || ''}
+                        onChange={() => {}}
                         className="w-full bg-black/30 text-gray-500 px-4 py-3 rounded-xl border border-gray-800"
-                        readOnly />
+                        readOnly={true}
+                      />
                     </div>
                   </div>
 
@@ -935,9 +1232,12 @@ writers CC, Ron, JJ
 
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-2">Genre</label>
-                    <input type="text" value={currentReview.장르 || ''} onChange={(e) => handleUpdate('장르', e.target.value)}
+                    <StableInput
+                      value={currentReview.장르 || ''}
+                      onChange={(v) => handleUpdate('장르', v)}
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
-                      placeholder="예: 발라드, 어쿠스틱 팝, POP BALLAD" />
+                      placeholder="예: 발라드, 어쿠스틱 팝, POP BALLAD"
+                    />
                   </div>
 
                   <div>
@@ -948,9 +1248,13 @@ writers CC, Ron, JJ
                       <option value="">프리셋 선택</option>
                       {FEEDBACK_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
-                    <textarea value={currentReview.피드백 || ''} onChange={(e) => handleUpdate('피드백', e.target.value)}
-                      className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500 resize-none" rows={2}
-                      placeholder="피드백 입력..." />
+                    <StableTextarea
+                      value={currentReview.피드백 || ''}
+                      onChange={(v) => handleUpdate('피드백', v)}
+                      className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500 resize-none"
+                      rows={2}
+                      placeholder="피드백 입력..."
+                    />
                   </div>
 
                   {parseFloat(currentReview.점수 || 0) >= 4.0 && (
@@ -1005,9 +1309,12 @@ writers CC, Ron, JJ
 
           <div className="glass rounded-2xl p-4 mb-4">
             <div className="flex flex-col md:flex-row gap-4">
-              <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              <StableInput
+                value={searchTerm}
+                onChange={(v) => setSearchTerm(v)}
                 className="flex-1 bg-black/30 text-white px-4 py-2 rounded-xl border border-gray-800 focus:border-indigo-500"
-                placeholder="🔍 검색..." />
+                placeholder="🔍 검색..."
+              />
               <div className="flex gap-2">
                 {[{ k: 'all', l: '전체' }, { k: 'reviewed', l: '완료' }, { k: 'pending', l: '미검토' }, { k: 'recommended', l: '추천' }].map(({ k, l }) => (
                   <button key={k} onClick={() => setFilterStatus(k)}
