@@ -115,7 +115,7 @@
     const GENRE_KEYWORDS = [
       'House', 'Hiphop', 'Hip-Hop', 'Hip Hop', 'Pop', 'Rock', 'Ballad', 'R&B', 'RnB',
       'Dance', 'EDM', 'Electronic', 'Jazz', 'Soul', 'Funk', 'Disco', 'Reggae',
-      'Country', 'Folk', 'Blues', 'Classical', 'Latin', 'Trap', 'Drill',
+      'Country', 'Folk', 'Blues', 'Classical', 'Latin', 'Trap', 'Drill', 'Rage',
       'K-Pop', 'J-Pop', 'City Pop', 'Synth', 'Acoustic', 'Alternative',
       'Indie', 'Metal', 'Punk', 'Grunge', 'Lo-Fi', 'Lofi', 'Chill',
       'Afrobeat', 'Reggaeton', 'Moombahton', 'Future Bass', 'Dubstep',
@@ -141,7 +141,8 @@
       '오영빈', 'Noheul', '노을', '차민호', 'Adam Argyle', 'Phil Plested',
       'Ron Irving', 'Dave Pickell', 'Ben Charles', 'Jose Manuel',
       "NU'MAKER", 'I-NORI', 'Gusten Dahlqvist', 'Jes Meinertz',
-      'June', 'KWH', 'Andreas', '서의성', '정진욱', '이성혁'
+      'June', 'KWH', 'Andreas', '서의성', '정진욱', '이성혁',
+      '김원', 'Renjin Zhao', 'J.S'  // 추가
     ]);
 
     // 이메일/폴더명 → OP명 매핑 (확장됨)
@@ -164,13 +165,19 @@
       'smobmusicofficial@gmail.com': 'SMOB',
       'oskar.larsson@glmusic.dk': 'GL Music',
       'hjkim@musiccombine.com': 'Music Combine',
-      'purpl78@hanmail.net': 'Individual',
+      'purpl78@hanmail.net': 'KW',  // 김원 작가
       'modern_sound@naver.com': 'Modern Sound',
       'victoria.ree@concord.com': 'Concord',
       'info@wavecandy.com': 'Wavecandy',
       // 추가 국제 퍼블리셔
       'soundgraphics': 'SoundGraphics',
       'admin@soundgraphics.co.kr': 'SoundGraphics',
+    };
+
+    // 이메일 → 저작자 매핑 (자동 저작자 입력용)
+    const EMAIL_TO_COMPOSER = {
+      'purpl78@hanmail.net': '김원',
+      'molesmusik@yahoo.es': 'Jose Manuel',
     };
 
     // 작가명 → OP명 매핑 (확장됨)
@@ -398,63 +405,102 @@
       return composers.join(', ');
     };
 
-    // ========== 핵심 파싱 함수 (확장됨) ==========
+    // ========== 핵심 파싱 함수 (스마트 버전) ==========
     const parseFileName = (filename, folderPath = '') => {
       const nameWithoutExt = filename.replace(/\.(mp3|wav|m4a|flac|aiff)$/i, '');
       let songName = '';
       let composer = '';
       let opName = '';
       let genre = '';
+      let bpm = '';
 
-      // 파일명에서 이메일 추출 (파일명 끝에 _이메일이 있는 경우)
-      const fileEmailMatch = nameWithoutExt.match(/_([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/i);
-      const fileEmail = fileEmailMatch ? fileEmailMatch[1] : '';
-      const email = fileEmail || extractEmailFromPath(folderPath);
+      // 파일명에서 모든 이메일 추출
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
+      const allEmails = nameWithoutExt.match(emailRegex) || [];
+      const email = allEmails[0] || extractEmailFromPath(folderPath);
 
       const composerHint = extractComposerHintFromPath(folderPath);
       const folderOP = extractOPFromFolderPath(folderPath);
 
-      // ★ SMOB 스타일 패턴: 곡명_장르_BPM_DEMO [작가][작가][작가]_이메일
-      // 예: Fake_House&Hiphop_126_DEMO [Smob][Sooyoon][Zomay]_smobmusicofficial@gmail.com
-      const smobMatch = nameWithoutExt.match(/^([^_]+)_([^_]+)_(\d+)_DEMO\s*(\[[^\]]+\](?:\[[^\]]+\])*)?(?:_[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})?$/i);
-      if (smobMatch) {
-        songName = smobMatch[1].trim();
-        const possibleGenre = smobMatch[2].trim();
-        const bpm = smobMatch[3];
-        const bracketPart = smobMatch[4] || '';
+      // 대괄호에서 저작자 추출
+      const bracketComposers = extractComposersFromBrackets(nameWithoutExt);
 
-        // 장르 키워드 확인
-        if (isGenreKeyword(possibleGenre)) {
-          genre = possibleGenre.replace(/&/g, ' & ');
+      // 파일명에서 이메일과 대괄호 제거한 버전
+      let cleanName = nameWithoutExt
+        .replace(emailRegex, '')  // 이메일 제거
+        .replace(/\[([^\]]+)\]/g, '')  // 대괄호 제거
+        .replace(/_+/g, '_')  // 연속 언더스코어 정리
+        .replace(/^_|_$/g, '')  // 앞뒤 언더스코어 제거
+        .trim();
+
+      // ★ 핵심 원칙: 첫 번째 _ 앞이 항상 곡명
+      const parts = cleanName.split('_').filter(p => p.trim());
+
+      if (parts.length >= 1) {
+        songName = parts[0].trim();
+
+        // 나머지 부분 분석
+        const restParts = parts.slice(1);
+        const composerParts = [];
+
+        for (const part of restParts) {
+          const trimmedPart = part.trim();
+
+          // DEMO, Demo 등은 스킵
+          if (/^DEMO[#]?$/i.test(trimmedPart)) continue;
+
+          // 순수 숫자는 BPM
+          if (/^\d+$/.test(trimmedPart) && !bpm) {
+            bpm = trimmedPart;
+            continue;
+          }
+
+          // 장르 키워드 확인
+          if (isGenreKeyword(trimmedPart) && !genre) {
+            genre = trimmedPart.replace(/&/g, ' & ');
+            continue;
+          }
+
+          // 지분율이 포함된 저작자 정보 (33.4%, 50% 등)
+          if (/\d+(\.\d+)?/.test(trimmedPart) && /[A-Za-z가-힣]/.test(trimmedPart)) {
+            composerParts.push(trimmedPart);
+            continue;
+          }
+
+          // Peermusic, Outdustry 등 퍼블리셔 키워드 포함 시 저작자 정보
+          if (/Peermusic|Outdustry|Publishing/i.test(trimmedPart)) {
+            composerParts.push(trimmedPart);
+            continue;
+          }
+
+          // 나머지는 저작자로 간주 (이메일이 아닌 경우)
+          if (trimmedPart && !/@/.test(trimmedPart)) {
+            composerParts.push(trimmedPart);
+          }
         }
 
-        // 대괄호에서 저작자 추출
-        if (bracketPart) {
-          composer = extractComposersFromBrackets(bracketPart);
+        // 저작자 정보 결합
+        if (bracketComposers) {
+          composer = bracketComposers;
+        } else if (composerParts.length > 0) {
+          composer = composerParts.join(' ');
         }
+      }
 
-        // OP명은 이메일에서 추출
-        opName = getOPFromEmail(email) || folderOP || '';
+      // OP명 결정
+      opName = getOPFromEmail(email) || folderOP || '';
 
+      // 이메일에서 기본 저작자 매핑 (저작자가 비어있을 때)
+      if (!composer && email && EMAIL_TO_COMPOSER[email]) {
+        composer = EMAIL_TO_COMPOSER[email];
+      }
+
+      // 결과가 있으면 반환
+      if (songName) {
         return { songName, composer, opName, email, genre, bpm };
       }
 
-      // ★ 유사 패턴: 곡명_장르_BPM_DEMO_이메일 (대괄호 없음)
-      const simpleSmobMatch = nameWithoutExt.match(/^([^_]+)_([^_]+)_(\d+)_DEMO(?:_[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})?$/i);
-      if (simpleSmobMatch) {
-        songName = simpleSmobMatch[1].trim();
-        const possibleGenre = simpleSmobMatch[2].trim();
-        const bpm = simpleSmobMatch[3];
-
-        if (isGenreKeyword(possibleGenre)) {
-          genre = possibleGenre.replace(/&/g, ' & ');
-        }
-
-        opName = getOPFromEmail(email) || folderOP || '';
-        composer = composerHint || '';
-
-        return { songName, composer, opName, email, genre, bpm };
-      }
+      // ========== 기존 특수 패턴들 (fallback) ==========
 
       // 패턴 1: _Pitched by MC로 끝나는 파일 (이미 처리된 파일)
       const pitchedMatch = nameWithoutExt.match(/^(.+?)_([^_]+)_Pitched by MC$/i);
