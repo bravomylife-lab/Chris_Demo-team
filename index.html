@@ -693,40 +693,41 @@
       return '';
     };
 
-    // 안정화된 입력 컴포넌트 (DemoReviewSystem 외부에 정의하여 리렌더링 방지)
-    // 로컬 상태를 사용하여 타이핑 중 끊김 현상 방지
-    const StableInput = React.memo(({ value, onChange, placeholder, className, type = 'text', readOnly = false }) => {
+    // ========== 안정화된 입력 컴포넌트 (CreditTextArea 패턴 적용) ==========
+    // 핵심: 타이핑 중에는 상위 상태를 업데이트하지 않고, blur 시에만 업데이트
+    const StableInput = React.memo(({ value, onChange, placeholder, className, type = 'text', readOnly = false, inputKey }) => {
       const [localValue, setLocalValue] = useState(value || '');
       const inputRef = useRef(null);
-      const isComposing = useRef(false);
+      const lastExternalValue = useRef(value);
 
-      // 외부 value가 변경되면 로컬 값 업데이트 (blur 이후나 다른 곡으로 이동 시)
+      // 외부 value가 변경되면 (다른 곡으로 이동 등) 로컬 값 업데이트
       useEffect(() => {
-        if (!inputRef.current || document.activeElement !== inputRef.current) {
-          setLocalValue(value || '');
+        // 외부 값이 실제로 변경되었고, 현재 포커스가 없을 때만 업데이트
+        if (value !== lastExternalValue.current) {
+          lastExternalValue.current = value;
+          if (document.activeElement !== inputRef.current) {
+            setLocalValue(value || '');
+          }
         }
       }, [value]);
 
+      // inputKey가 변경되면 (다른 곡으로 이동) 강제 업데이트
+      useEffect(() => {
+        setLocalValue(value || '');
+        lastExternalValue.current = value;
+      }, [inputKey]);
+
       const handleChange = (e) => {
-        const newValue = e.target.value;
-        setLocalValue(newValue);
-        // 조합 중이 아닐 때만 업데이트
-        if (!isComposing.current) {
-          onChange(newValue);
-        }
-      };
-
-      const handleCompositionStart = () => {
-        isComposing.current = true;
-      };
-
-      const handleCompositionEnd = (e) => {
-        isComposing.current = false;
-        onChange(e.target.value);
+        // 로컬 상태만 업데이트, 상위 상태는 건드리지 않음
+        setLocalValue(e.target.value);
       };
 
       const handleBlur = () => {
-        onChange(localValue);
+        // blur 시에만 상위 상태 업데이트
+        if (localValue !== lastExternalValue.current) {
+          onChange(localValue);
+          lastExternalValue.current = localValue;
+        }
       };
 
       return (
@@ -735,8 +736,6 @@
           type={type}
           value={localValue}
           onChange={handleChange}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
           onBlur={handleBlur}
           className={className}
           placeholder={placeholder}
@@ -745,37 +744,35 @@
       );
     });
 
-    // 안정화된 Textarea 컴포넌트
-    const StableTextarea = React.memo(({ value, onChange, placeholder, className, rows = 2 }) => {
+    // 안정화된 Textarea 컴포넌트 (CreditTextArea 패턴 적용)
+    const StableTextarea = React.memo(({ value, onChange, placeholder, className, rows = 2, inputKey }) => {
       const [localValue, setLocalValue] = useState(value || '');
       const textareaRef = useRef(null);
-      const isComposing = useRef(false);
+      const lastExternalValue = useRef(value);
 
       useEffect(() => {
-        if (!textareaRef.current || document.activeElement !== textareaRef.current) {
-          setLocalValue(value || '');
+        if (value !== lastExternalValue.current) {
+          lastExternalValue.current = value;
+          if (document.activeElement !== textareaRef.current) {
+            setLocalValue(value || '');
+          }
         }
       }, [value]);
 
+      useEffect(() => {
+        setLocalValue(value || '');
+        lastExternalValue.current = value;
+      }, [inputKey]);
+
       const handleChange = (e) => {
-        const newValue = e.target.value;
-        setLocalValue(newValue);
-        if (!isComposing.current) {
-          onChange(newValue);
-        }
-      };
-
-      const handleCompositionStart = () => {
-        isComposing.current = true;
-      };
-
-      const handleCompositionEnd = (e) => {
-        isComposing.current = false;
-        onChange(e.target.value);
+        setLocalValue(e.target.value);
       };
 
       const handleBlur = () => {
-        onChange(localValue);
+        if (localValue !== lastExternalValue.current) {
+          onChange(localValue);
+          lastExternalValue.current = localValue;
+        }
       };
 
       return (
@@ -783,8 +780,6 @@
           ref={textareaRef}
           value={localValue}
           onChange={handleChange}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
           onBlur={handleBlur}
           className={className}
           placeholder={placeholder}
@@ -1337,6 +1332,7 @@ writers CC, Ron, JJ
                       onChange={(v) => handleUpdate('저작자', v)}
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
                       placeholder="예: OneTop, Zeenan"
+                      inputKey={currentSong?.id}
                     />
                   </div>
 
@@ -1348,6 +1344,7 @@ writers CC, Ron, JJ
                         onChange={(v) => handleUpdate('OP명', v)}
                         className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
                         placeholder="예: OneTop, SJJ"
+                        inputKey={currentSong?.id}
                       />
                     </div>
                     <div>
@@ -1357,6 +1354,7 @@ writers CC, Ron, JJ
                         onChange={() => {}}
                         className="w-full bg-black/30 text-gray-500 px-4 py-3 rounded-xl border border-gray-800"
                         readOnly={true}
+                        inputKey={currentSong?.id}
                       />
                     </div>
                   </div>
@@ -1379,6 +1377,7 @@ writers CC, Ron, JJ
                       onChange={(v) => handleUpdate('장르', v)}
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
                       placeholder="예: 발라드, 어쿠스틱 팝, POP BALLAD"
+                      inputKey={currentSong?.id}
                     />
                   </div>
 
@@ -1396,6 +1395,7 @@ writers CC, Ron, JJ
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500 resize-none"
                       rows={2}
                       placeholder="피드백 입력..."
+                      inputKey={currentSong?.id}
                     />
                   </div>
 
