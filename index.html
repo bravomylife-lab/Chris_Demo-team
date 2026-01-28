@@ -111,6 +111,39 @@
 
     const SCORES = ['5.0', '4.5', '4.0', '3.5', '3.0', '2.5', '2.0', '1.5', '1.0'];
 
+    // 장르 키워드 목록 (자동 분류용)
+    const GENRE_KEYWORDS = [
+      'House', 'Hiphop', 'Hip-Hop', 'Hip Hop', 'Pop', 'Rock', 'Ballad', 'R&B', 'RnB',
+      'Dance', 'EDM', 'Electronic', 'Jazz', 'Soul', 'Funk', 'Disco', 'Reggae',
+      'Country', 'Folk', 'Blues', 'Classical', 'Latin', 'Trap', 'Drill',
+      'K-Pop', 'J-Pop', 'City Pop', 'Synth', 'Acoustic', 'Alternative',
+      'Indie', 'Metal', 'Punk', 'Grunge', 'Lo-Fi', 'Lofi', 'Chill',
+      'Afrobeat', 'Reggaeton', 'Moombahton', 'Future Bass', 'Dubstep',
+      'Trance', 'Techno', 'Progressive', 'Ambient', 'New Age',
+      'Gospel', 'Worship', 'Christmas', 'Slow Jam', 'Uptempo',
+      'Midtempo', 'Downtempo', 'UK Garage', 'Garage', 'Grime',
+      'HIP&GEN-Z', 'GEN-Z', 'Y2K', 'Retro', 'Modern', '80s', '90s'
+    ];
+
+    // 장르 키워드인지 확인
+    const isGenreKeyword = (text) => {
+      const lowerText = text.toLowerCase().replace(/[&-]/g, '');
+      return GENRE_KEYWORDS.some(genre =>
+        lowerText.includes(genre.toLowerCase().replace(/[&-]/g, ''))
+      );
+    };
+
+    // 알려진 작곡가 목록 (자동 인식용)
+    const KNOWN_COMPOSERS = new Set([
+      'Smob', 'SMOB', 'Sooyoon', 'Zomay', 'Chris Alice', 'TAN', 'Sisyphus',
+      '영원희', 'Karrinator', '케빈오빠', 'MOGT', 'YUSU', 'OneTop', 'Zeenan',
+      'Andy', '서정진', '전근화', 'Weeky1', 'BT', '유정훈', '박민우', '박현규',
+      '오영빈', 'Noheul', '노을', '차민호', 'Adam Argyle', 'Phil Plested',
+      'Ron Irving', 'Dave Pickell', 'Ben Charles', 'Jose Manuel',
+      "NU'MAKER", 'I-NORI', 'Gusten Dahlqvist', 'Jes Meinertz',
+      'June', 'KWH', 'Andreas', '서의성', '정진욱', '이성혁'
+    ]);
+
     // 이메일/폴더명 → OP명 매핑 (확장됨)
     const EMAIL_TO_OP = {
       // 기존 매핑
@@ -195,7 +228,7 @@
       'i-nori': 'SMOB',
       // GL Music (북유럽)
       'gusten dahlqvist': 'GL Music',
-      'cosmos': 'GL Music',
+      'cosmos': 'COS',  // COSMOS → COS
       'jes meinertz': 'GL Music',
       'johs': 'GL Music',
       'deekay': 'GL Music',
@@ -357,16 +390,71 @@
       return d.toISOString().split('T')[0];
     };
 
+    // 대괄호에서 저작자들 추출 [A][B][C] → "A, B, C"
+    const extractComposersFromBrackets = (text) => {
+      const matches = text.match(/\[([^\]]+)\]/g);
+      if (!matches) return '';
+      const composers = matches.map(m => m.replace(/[\[\]]/g, '').trim());
+      return composers.join(', ');
+    };
+
     // ========== 핵심 파싱 함수 (확장됨) ==========
     const parseFileName = (filename, folderPath = '') => {
       const nameWithoutExt = filename.replace(/\.(mp3|wav|m4a|flac|aiff)$/i, '');
       let songName = '';
       let composer = '';
       let opName = '';
+      let genre = '';
 
-      const email = extractEmailFromPath(folderPath);
+      // 파일명에서 이메일 추출 (파일명 끝에 _이메일이 있는 경우)
+      const fileEmailMatch = nameWithoutExt.match(/_([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/i);
+      const fileEmail = fileEmailMatch ? fileEmailMatch[1] : '';
+      const email = fileEmail || extractEmailFromPath(folderPath);
+
       const composerHint = extractComposerHintFromPath(folderPath);
       const folderOP = extractOPFromFolderPath(folderPath);
+
+      // ★ SMOB 스타일 패턴: 곡명_장르_BPM_DEMO [작가][작가][작가]_이메일
+      // 예: Fake_House&Hiphop_126_DEMO [Smob][Sooyoon][Zomay]_smobmusicofficial@gmail.com
+      const smobMatch = nameWithoutExt.match(/^([^_]+)_([^_]+)_(\d+)_DEMO\s*(\[[^\]]+\](?:\[[^\]]+\])*)?(?:_[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})?$/i);
+      if (smobMatch) {
+        songName = smobMatch[1].trim();
+        const possibleGenre = smobMatch[2].trim();
+        const bpm = smobMatch[3];
+        const bracketPart = smobMatch[4] || '';
+
+        // 장르 키워드 확인
+        if (isGenreKeyword(possibleGenre)) {
+          genre = possibleGenre.replace(/&/g, ' & ');
+        }
+
+        // 대괄호에서 저작자 추출
+        if (bracketPart) {
+          composer = extractComposersFromBrackets(bracketPart);
+        }
+
+        // OP명은 이메일에서 추출
+        opName = getOPFromEmail(email) || folderOP || '';
+
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ★ 유사 패턴: 곡명_장르_BPM_DEMO_이메일 (대괄호 없음)
+      const simpleSmobMatch = nameWithoutExt.match(/^([^_]+)_([^_]+)_(\d+)_DEMO(?:_[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})?$/i);
+      if (simpleSmobMatch) {
+        songName = simpleSmobMatch[1].trim();
+        const possibleGenre = simpleSmobMatch[2].trim();
+        const bpm = simpleSmobMatch[3];
+
+        if (isGenreKeyword(possibleGenre)) {
+          genre = possibleGenre.replace(/&/g, ' & ');
+        }
+
+        opName = getOPFromEmail(email) || folderOP || '';
+        composer = composerHint || '';
+
+        return { songName, composer, opName, email, genre, bpm };
+      }
 
       // 패턴 1: _Pitched by MC로 끝나는 파일 (이미 처리된 파일)
       const pitchedMatch = nameWithoutExt.match(/^(.+?)_([^_]+)_Pitched by MC$/i);
@@ -813,7 +901,13 @@ writers CC, Ron, JJ
       useEffect(() => { localStorage.setItem(META_KEY, JSON.stringify({ artistName })); }, [artistName]);
 
       const currentSong = songs[currentIndex] || null;
-      const currentReview = currentSong ? (reviews[currentSong.id] || { 피드백: '', 장르: '', 점수: '', OP명: currentSong.OP명, 저작자: currentSong.저작자 }) : null;
+      const currentReview = currentSong ? (reviews[currentSong.id] || {
+        피드백: '',
+        장르: currentSong.장르 || '',  // 자동 추출된 장르 사용
+        점수: '',
+        OP명: currentSong.OP명,
+        저작자: currentSong.저작자
+      }) : null;
       const reviewedCount = useMemo(() => songs.filter(s => reviews[s.id]?.점수).length, [songs, reviews]);
       const progress = songs.length > 0 ? ((reviewedCount / songs.length) * 100).toFixed(0) : 0;
 
@@ -861,6 +955,8 @@ writers CC, Ron, JJ
             저작자: parsed.composer,
             OP명: parsed.opName,
             이메일: parsed.email,
+            장르: parsed.genre || '',  // 자동 추출된 장르
+            BPM: parsed.bpm || '',     // 자동 추출된 BPM
             원본파일명: file.name,
             원본경로: path,
             업로드날짜: uploadDate,
