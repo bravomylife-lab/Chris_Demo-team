@@ -693,46 +693,27 @@
       return '';
     };
 
-    // ========== 안정화된 입력 컴포넌트 (CreditTextArea 패턴 적용) ==========
-    // 핵심: 타이핑 중에는 상위 상태를 업데이트하지 않고, blur 시에만 업데이트
-    const StableInput = React.memo(({ value, onChange, placeholder, className, type = 'text', readOnly = false, inputKey }) => {
-      const [localValue, setLocalValue] = useState(value || '');
-      const inputRef = useRef(null);
-      const lastExternalValue = useRef(value);
-
-      // 외부 value가 변경되면 (다른 곡으로 이동 등) 로컬 값 업데이트
-      useEffect(() => {
-        // 외부 값이 실제로 변경되었고, 현재 포커스가 없을 때만 업데이트
-        if (value !== lastExternalValue.current) {
-          lastExternalValue.current = value;
-          if (document.activeElement !== inputRef.current) {
-            setLocalValue(value || '');
-          }
-        }
-      }, [value]);
-
-      // inputKey가 변경되면 (다른 곡으로 이동) 강제 업데이트
-      useEffect(() => {
-        setLocalValue(value || '');
-        lastExternalValue.current = value;
-      }, [inputKey]);
+    // ========== 완전 독립 입력 컴포넌트 (key 기반, 리렌더링 완전 차단) ==========
+    // 핵심: 부모 컴포넌트의 key prop으로만 재생성, 상위 상태 변경에 영향 없음
+    const StableInput = React.memo(({ initialValue, onValueChange, placeholder, className, type = 'text', readOnly = false }) => {
+      // initialValue는 마운트 시에만 사용, 이후 변경 무시
+      const [localValue, setLocalValue] = useState(initialValue || '');
+      const initialRef = useRef(initialValue);
 
       const handleChange = (e) => {
-        // 로컬 상태만 업데이트, 상위 상태는 건드리지 않음
         setLocalValue(e.target.value);
       };
 
       const handleBlur = () => {
-        // blur 시에만 상위 상태 업데이트
-        if (localValue !== lastExternalValue.current) {
-          onChange(localValue);
-          lastExternalValue.current = localValue;
+        // 값이 변경된 경우에만 부모에게 알림
+        if (localValue !== initialRef.current && onValueChange) {
+          onValueChange(localValue);
+          initialRef.current = localValue; // 다음 blur 비교용 업데이트
         }
       };
 
       return (
         <input
-          ref={inputRef}
           type={type}
           value={localValue}
           onChange={handleChange}
@@ -744,40 +725,24 @@
       );
     });
 
-    // 안정화된 Textarea 컴포넌트 (CreditTextArea 패턴 적용)
-    const StableTextarea = React.memo(({ value, onChange, placeholder, className, rows = 2, inputKey }) => {
-      const [localValue, setLocalValue] = useState(value || '');
-      const textareaRef = useRef(null);
-      const lastExternalValue = useRef(value);
-
-      useEffect(() => {
-        if (value !== lastExternalValue.current) {
-          lastExternalValue.current = value;
-          if (document.activeElement !== textareaRef.current) {
-            setLocalValue(value || '');
-          }
-        }
-      }, [value]);
-
-      useEffect(() => {
-        setLocalValue(value || '');
-        lastExternalValue.current = value;
-      }, [inputKey]);
+    // 완전 독립 Textarea 컴포넌트
+    const StableTextarea = React.memo(({ initialValue, onValueChange, placeholder, className, rows = 2 }) => {
+      const [localValue, setLocalValue] = useState(initialValue || '');
+      const initialRef = useRef(initialValue);
 
       const handleChange = (e) => {
         setLocalValue(e.target.value);
       };
 
       const handleBlur = () => {
-        if (localValue !== lastExternalValue.current) {
-          onChange(localValue);
-          lastExternalValue.current = localValue;
+        if (localValue !== initialRef.current && onValueChange) {
+          onValueChange(localValue);
+          initialRef.current = localValue;
         }
       };
 
       return (
         <textarea
-          ref={textareaRef}
           value={localValue}
           onChange={handleChange}
           onBlur={handleBlur}
@@ -920,6 +885,7 @@ writers CC, Ron, JJ
       const [filterStatus, setFilterStatus] = useState('all');
       const [creditText, setCreditText] = useState('');
       const [pendingSongs, setPendingSongs] = useState([]);
+      const [presetVersion, setPresetVersion] = useState(0); // 프리셋 선택 시 증가하여 피드백 필드 재생성
 
       const folderInputRef = useRef(null);
       const creditTextRef = useRef('');
@@ -1288,8 +1254,9 @@ writers CC, Ron, JJ
                   <button onClick={() => setView('upload')} className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white">🏠</button>
                   <div>
                     <StableInput
-                      value={artistName}
-                      onChange={(v) => setArtistName(v)}
+                      key={`artist-${artistName ? 'set' : 'empty'}`}
+                      initialValue={artistName}
+                      onValueChange={(v) => setArtistName(v)}
                       className="text-xl font-bold text-white bg-transparent border-b border-transparent hover:border-gray-600 focus:border-indigo-500 outline-none"
                       placeholder="아티스트명 입력"
                     />
@@ -1328,11 +1295,11 @@ writers CC, Ron, JJ
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-2">저작자 정보</label>
                     <StableInput
-                      value={currentReview.저작자 ?? currentSong.저작자 ?? ''}
-                      onChange={(v) => handleUpdate('저작자', v)}
+                      key={`composer-${currentSong?.id}`}
+                      initialValue={currentReview.저작자 ?? currentSong.저작자 ?? ''}
+                      onValueChange={(v) => handleUpdate('저작자', v)}
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
                       placeholder="예: OneTop, Zeenan"
-                      inputKey={currentSong?.id}
                     />
                   </div>
 
@@ -1340,21 +1307,20 @@ writers CC, Ron, JJ
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">OP명 / 작가명</label>
                       <StableInput
-                        value={currentReview.OP명 ?? currentSong.OP명 ?? ''}
-                        onChange={(v) => handleUpdate('OP명', v)}
+                        key={`op-${currentSong?.id}`}
+                        initialValue={currentReview.OP명 ?? currentSong.OP명 ?? ''}
+                        onValueChange={(v) => handleUpdate('OP명', v)}
                         className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
                         placeholder="예: OneTop, SJJ"
-                        inputKey={currentSong?.id}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">이메일</label>
                       <StableInput
-                        value={currentSong.이메일 || ''}
-                        onChange={() => {}}
+                        key={`email-${currentSong?.id}`}
+                        initialValue={currentSong.이메일 || ''}
                         className="w-full bg-black/30 text-gray-500 px-4 py-3 rounded-xl border border-gray-800"
                         readOnly={true}
-                        inputKey={currentSong?.id}
                       />
                     </div>
                   </div>
@@ -1373,29 +1339,34 @@ writers CC, Ron, JJ
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-2">Genre</label>
                     <StableInput
-                      value={currentReview.장르 || ''}
-                      onChange={(v) => handleUpdate('장르', v)}
+                      key={`genre-${currentSong?.id}`}
+                      initialValue={currentReview.장르 || ''}
+                      onValueChange={(v) => handleUpdate('장르', v)}
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500"
                       placeholder="예: 발라드, 어쿠스틱 팝, POP BALLAD"
-                      inputKey={currentSong?.id}
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-400 mb-2">Tag(Note)</label>
                     <select value={FEEDBACK_PRESETS.includes(currentReview.피드백) ? currentReview.피드백 : ''}
-                      onChange={(e) => e.target.value && handleUpdate('피드백', e.target.value)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleUpdate('피드백', e.target.value);
+                          setPresetVersion(v => v + 1); // 피드백 필드 재생성
+                        }
+                      }}
                       className="w-full bg-black/30 text-gray-300 px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500 mb-2">
                       <option value="">프리셋 선택</option>
                       {FEEDBACK_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                     <StableTextarea
-                      value={currentReview.피드백 || ''}
-                      onChange={(v) => handleUpdate('피드백', v)}
+                      key={`feedback-${currentSong?.id}-${presetVersion}`}
+                      initialValue={currentReview.피드백 || ''}
+                      onValueChange={(v) => handleUpdate('피드백', v)}
                       className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500 resize-none"
                       rows={2}
                       placeholder="피드백 입력..."
-                      inputKey={currentSong?.id}
                     />
                   </div>
 
@@ -1451,9 +1422,10 @@ writers CC, Ron, JJ
 
           <div className="glass rounded-2xl p-4 mb-4">
             <div className="flex flex-col md:flex-row gap-4">
-              <StableInput
+              <input
+                type="text"
                 value={searchTerm}
-                onChange={(v) => setSearchTerm(v)}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="flex-1 bg-black/30 text-white px-4 py-2 rounded-xl border border-gray-800 focus:border-indigo-500"
                 placeholder="🔍 검색..."
               />
