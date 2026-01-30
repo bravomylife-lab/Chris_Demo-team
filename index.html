@@ -120,12 +120,13 @@
 
     // 장르 프리셋 목록
     const GENRE_PRESETS = [
-      'Pop', 'K-Pop', 'Ballad', 'R&B', 'Hip-Hop', 'Rock',
+      'Pop', 'K-Pop', 'Ballad', 'K-Ballad', 'R&B', 'Hip-Hop', 'Rock',
       'Dance', 'EDM', 'Electronic', 'House', 'Trap', 'Drill',
       'Jazz', 'Soul', 'Funk', 'Disco', 'Reggae', 'Country',
       'Folk', 'Blues', 'Acoustic', 'Alternative', 'Indie',
       'City Pop', 'Synth Pop', 'Future Bass', 'Dubstep',
-      'Lo-Fi', 'Chill', 'Afrobeat', 'Latin', 'Reggaeton'
+      'Lo-Fi', 'Chill', 'Afrobeat', 'Latin', 'Reggaeton',
+      'Urban', 'Retro', 'Hyper', 'Mixx Pop', 'Garage', '2Step', 'OST'
     ];
 
     // 장르 키워드 목록 (자동 분류용)
@@ -186,7 +187,7 @@
       'hjkim@musiccombine.com': 'Music Combine',
       'purpl78@hanmail.net': 'KW',  // 김원 작가
       'modern_sound@naver.com': 'Modern Sound',
-      'victoria.ree@concord.com': 'Concord',
+      'victoria.ree@concord.com': 'CON',
       'info@wavecandy.com': 'Wavecandy',
       // 추가 국제 퍼블리셔
       'soundgraphics': 'SoundGraphics',
@@ -558,6 +559,59 @@
         composer = bracketComposerMatch[1].trim();
         songName = bracketComposerMatch[2].trim();
         opName = getOPFromEmail(email) || composer.replace(/\s+/g, '');
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-3: GL Music 형식 ==========
+      // 예: 05 - GL Music - Gimmi Gimmi.mp3
+      const glMusicPattern = /^\d+\s*-\s*GL\s*Music\s*-\s*(.+)$/i;
+      const glMusicMatch = nameWithoutExt.match(glMusicPattern);
+      if (glMusicMatch) {
+        songName = glMusicMatch[1].trim();
+        opName = 'GL';
+        // 저작자 정보는 크레딧 입력란에서 제공됨
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-4: 번호 - 작곡가, 작곡가 - 곡명 형식 ==========
+      // 예: 06 - Nick Hahn, Dagny - WOW.mp3
+      const numberedComposerPattern = /^\d+\s*-\s*([^-]+?)\s*-\s*(.+)$/;
+      const numberedComposerMatch = nameWithoutExt.match(numberedComposerPattern);
+      if (numberedComposerMatch) {
+        const potentialComposer = numberedComposerMatch[1].trim();
+        songName = numberedComposerMatch[2].trim();
+        // 쉼표가 있거나 영문 이름 형식이면 작곡가로 인식
+        if (/,/.test(potentialComposer) || /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*/.test(potentialComposer)) {
+          composer = potentialComposer;
+          opName = getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
+        } else {
+          opName = getOPFromEmail(email) || folderOP || '';
+        }
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-5: 곡명_장르_BPM_DEMO [작곡가] 형식 (Smob 스타일) ==========
+      // 예: Average_HipHop&Pop_114_DEMO [Smob].mp3
+      // 예: Don't Touch_Hiphop&Pop_102_DEMO [Smob][Mint].mp3
+      const smobBracketPattern = /^(.+?)_([A-Za-z&]+)_(\d+)_DEMO\s*(\[.+\])+$/i;
+      const smobBracketMatch = nameWithoutExt.match(smobBracketPattern);
+      if (smobBracketMatch) {
+        songName = smobBracketMatch[1].trim();
+        const genreRaw = smobBracketMatch[2].trim();
+        bpm = smobBracketMatch[3];
+
+        // 장르 정제 (HipHop&Pop → Hip-Hop & Pop)
+        genre = genreRaw.replace(/&/g, ' & ').replace(/([a-z])([A-Z])/g, '$1-$2');
+
+        // 대괄호에서 작곡가들 추출
+        const brackets = nameWithoutExt.match(/\[([^\]]+)\]/g);
+        if (brackets) {
+          const composers = brackets.map(b => b.replace(/[\[\]]/g, '').trim());
+          composer = composers.join(', ');
+          // 첫 번째 작곡가가 Smob이면 OP명은 SMOB
+          opName = composers[0].toUpperCase();
+        }
+
         return { songName, composer, opName, email, genre, bpm };
       }
 
@@ -1055,9 +1109,10 @@ writers CC, Ron, JJ
       );
     });
 
-    // 크레딧 텍스트 파싱 (확장됨 - Track Title, WRITERS DETAILS 지원)
+    // 크레딧 텍스트 파싱 (확장됨 - Track Title, WRITERS DETAILS, GL Music Composer 지원)
     const parseCreditText = (creditText) => {
       const credits = {};
+      const composerFeedbacks = {}; // GL Music 등의 Composer 정보 (피드백용)
       const lines = creditText.split('\n').map(l => l.trim()).filter(l => l);
 
       let currentSong = null;
@@ -1191,11 +1246,12 @@ writers CC, Ron, JJ
         }
 
         // 패턴 4: "Composer\tJay Made (GL Music) / Camilia (Lifted House)" 형식
-        // 탭으로 구분된 Composer 필드
+        // 탭으로 구분된 Composer 필드 (GL Music 등 - 피드백에 기입)
         const composerTabMatch = line.match(/^Composer\s+(.+)$/i);
         if (composerTabMatch && currentSong) {
           const composerInfo = composerTabMatch[1].trim();
-          currentCredits.push(composerInfo);
+          // GL Music의 Composer 정보는 피드백에 기입
+          composerFeedbacks[currentSong.toLowerCase()] = `작곡: ${composerInfo}`;
           continue;
         }
 
@@ -1281,7 +1337,7 @@ writers CC, Ron, JJ
         credits[currentSong.toLowerCase()] = [...allWords].join(' ');
       }
 
-      return credits;
+      return { credits, composerFeedbacks };
     };
 
     const getScoreColor = (score) => {
@@ -1425,10 +1481,12 @@ writers CC, Ron, JJ
       const applyCreditsAndStart = () => {
         let updatedSongs = [...pendingSongs];
         const textToUse = creditTextRef.current || creditText;
+        let feedbacksToApply = {};
 
         if (textToUse.trim()) {
-          const credits = parseCreditText(textToUse);
+          const { credits, composerFeedbacks } = parseCreditText(textToUse);
           console.log('파싱된 크레딧:', credits);
+          console.log('파싱된 Composer 피드백:', composerFeedbacks);
 
           // 정규화된 키로 크레딧 맵 재생성
           const normalizedCredits = {};
@@ -1438,11 +1496,24 @@ writers CC, Ron, JJ
             console.log(`크레딧 정규화: "${key}" → "${normalized}"`);
           }
 
+          // 정규화된 키로 피드백 맵 재생성
+          const normalizedFeedbacks = {};
+          for (const [key, value] of Object.entries(composerFeedbacks)) {
+            const normalized = normalizeSongName(key);
+            normalizedFeedbacks[normalized] = value;
+          }
+
           updatedSongs = pendingSongs.map(song => {
             const songNameNormalized = normalizeSongName(song.곡명);
             const matchedCredit = normalizedCredits[songNameNormalized];
+            const matchedFeedback = normalizedFeedbacks[songNameNormalized];
 
             console.log(`곡명 매칭 시도: "${song.곡명}" → "${songNameNormalized}" → ${matchedCredit ? '매칭 성공' : '매칭 실패'}`);
+
+            // 피드백 정보가 있으면 저장 (나중에 reviews에 적용)
+            if (matchedFeedback) {
+              feedbacksToApply[song.id] = matchedFeedback;
+            }
 
             if (matchedCredit) {
               return {
@@ -1455,6 +1526,21 @@ writers CC, Ron, JJ
         }
 
         setSongs(prev => [...prev, ...updatedSongs]);
+
+        // GL Music 등의 Composer 피드백을 reviews에 자동 적용
+        if (Object.keys(feedbacksToApply).length > 0) {
+          setReviews(prev => {
+            const newReviews = { ...prev };
+            for (const [songId, feedback] of Object.entries(feedbacksToApply)) {
+              newReviews[songId] = {
+                ...newReviews[songId],
+                피드백: feedback
+              };
+            }
+            return newReviews;
+          });
+        }
+
         setPendingSongs([]);
         setCreditText('');
         creditTextRef.current = '';
