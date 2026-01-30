@@ -186,12 +186,13 @@
       // 새로운 매핑 (NEXZ JAPAN 프로젝트 등)
       'eunae.solcire@gmail.com': 'Solcire',
       'smobmusicofficial@gmail.com': 'SMOB',
-      'oskar.larsson@glmusic.dk': 'GL Music',
+      'oskar.larsson@glmusic.dk': 'GL',
       'hjkim@musiccombine.com': 'Music Combine',
       'purpl78@hanmail.net': 'KW',  // 김원 작가
       'modern_sound@naver.com': 'Modern Sound',
       'victoria.ree@concord.com': 'CON',
       'info@wavecandy.com': 'Wavecandy',
+      'emma@cosmos-music.com': 'COS',
       // 추가 국제 퍼블리셔
       'soundgraphics': 'SoundGraphics',
       'admin@soundgraphics.co.kr': 'SoundGraphics',
@@ -557,6 +558,9 @@
       const rawEmail = allEmails[0] || extractEmailFromPath(folderPath);
       let email = cleanEmailAddress(rawEmail) || '대표님 전달 DEMO'; // 이메일 없으면 기본값 (let으로 재할당 가능)
 
+      // ★★★ 중요: 파일명에서 이메일 제거 (모든 패턴 매칭이 이메일 없는 상태에서 작동하도록) ★★★
+      nameWithoutExt = nameWithoutExt.replace(emailRegex, '').replace(/_+$/, '').trim();
+
       const composerHint = extractComposerHintFromPath(folderPath);
       const folderOP = extractOPFromFolderPath(folderPath);
 
@@ -755,6 +759,31 @@
         if (/eniac/i.test(composer) || /eniac/i.test(nameWithoutExt)) {
           email = '대표님 전달 DEMO';
         }
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-10-3: 작가명 - 곡명 - 장르_이메일 형식 (기본 패턴) ==========
+      // 예: 이종준 - I'm You - Band_rykie456@naver.com.mp3
+      // 예: 전근화 - Love Song - Pop_demo@example.com.mp3
+      const basicComposerSongGenrePattern = /^([^-_]+)\s*-\s*([^-_]+)\s*-\s*([^_]+?)(?:_|$)/;
+      const basicComposerSongGenreMatch = nameWithoutExt.match(basicComposerSongGenrePattern);
+      if (basicComposerSongGenreMatch) {
+        composer = basicComposerSongGenreMatch[1].trim();
+        songName = basicComposerSongGenreMatch[2].trim();
+        genre = basicComposerSongGenreMatch[3].trim();
+        opName = getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-10-4: 작가명-곡명_이메일 형식 (하이픈 한 개, 기본 패턴) ==========
+      // 예: 이기환-It's just a little too late DEMO_kihwani0311@naver.com.mp3
+      // 예: 전근화-Beautiful Day_demo@example.com.mp3
+      const simpleComposerSongPattern = /^([가-힣]{2,4}|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*-\s*(.+?)(?:_|$)/;
+      const simpleComposerSongMatch = nameWithoutExt.match(simpleComposerSongPattern);
+      if (simpleComposerSongMatch) {
+        composer = simpleComposerSongMatch[1].trim();
+        songName = simpleComposerSongMatch[2].trim();
+        opName = getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
         return { songName, composer, opName, email, genre, bpm };
       }
 
