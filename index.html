@@ -192,12 +192,14 @@
       // 추가 국제 퍼블리셔
       'soundgraphics': 'SoundGraphics',
       'admin@soundgraphics.co.kr': 'SoundGraphics',
+      'shun@soundgraphics.net': 'SG',
       // 신규 매핑
       'jty9142@gmail.com': 'JYT',
       'roxannechloe@hotmail.co.uk': 'audiofreaks',
       'zzix1234@naver.com': 'KZ',
       'jaadde@naver.com': 'JADE',
       'sae170@naver.com': 'BSR',
+      'eogh8282@naver.com': 'JDH',
     };
 
     // 이메일 → 저작자 매핑 (자동 저작자 입력용)
@@ -207,6 +209,7 @@
       'zzix1234@naver.com': 'KZ',
       'jaadde@naver.com': 'JADE',
       'sae170@naver.com': '배새롬',
+      'eogh8282@naver.com': '진대호',
     };
 
     // 작가명 → OP명 매핑 (확장됨)
@@ -234,6 +237,11 @@
       'noheul': 'Noheul',
       '노을': 'Noheul',
       '차민호': 'ART.M',
+      'marco': 'LMK',
+      'artmatic': 'ART.M',
+      'john void': 'ENIAC',
+      'eniac': 'ENIAC',
+      '진대호': 'JDH',
       'adam argyle': 'EavesMusic',
       'phil plested': 'EavesMusic',
       'nick hahn': 'EavesMusic',
@@ -369,6 +377,16 @@
       const firstComposer = composer.split(/[,/]/)[0].trim();
       if (/^[가-힣]{2,4}$/.test(firstComposer)) {
         return getKoreanInitials(firstComposer);
+      }
+
+      // 3. 영문 이름 이니셜 추출 (Chris Wahle → CW)
+      if (/^[A-Z][a-z]+\s+[A-Z][a-z]+/.test(firstComposer)) {
+        return getEnglishInitials(firstComposer);
+      }
+
+      // 4. 그 외: 빈칸 제거 (high seAson → highseAson)
+      if (/^[A-Za-z\s]+$/.test(firstComposer)) {
+        return firstComposer.replace(/\s+/g, '');
       }
 
       return '';
@@ -524,7 +542,7 @@
       const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
       const allEmails = nameWithoutExt.match(emailRegex) || [];
       const rawEmail = allEmails[0] || extractEmailFromPath(folderPath);
-      const email = cleanEmailAddress(rawEmail); // 이메일 정제
+      const email = cleanEmailAddress(rawEmail) || '대표님 전달 DEMO'; // 이메일 없으면 기본값
 
       const composerHint = extractComposerHintFromPath(folderPath);
       const folderOP = extractOPFromFolderPath(folderPath);
@@ -612,6 +630,93 @@
           opName = composers[0].toUpperCase();
         }
 
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-6: [작곡가] 곡명 (Demo) bpm숫자 형식 ==========
+      // 예: [MARCO] DANGEROUS (Demo) bpm93.mp3
+      const demoBpmPattern = /^\[([^\]]+)\]\s+(.+?)\s+\(Demo\)\s+bpm(\d+)/i;
+      const demoBpmMatch = nameWithoutExt.match(demoBpmPattern);
+      if (demoBpmMatch) {
+        composer = demoBpmMatch[1].trim();
+        songName = demoBpmMatch[2].trim();
+        bpm = demoBpmMatch[3];
+        opName = getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-7: [장르]곡명 BPM숫자 형식 ==========
+      // 예: [K-POP]MORE THAN U BPM140.mp3
+      const genreBracketPattern = /^\[([^\]]+)\]\s*(.+?)\s+BPM(\d+)/i;
+      const genreBracketMatch = nameWithoutExt.match(genreBracketPattern);
+      if (genreBracketMatch) {
+        const bracketContent = genreBracketMatch[1].trim();
+        // K-POP, URBAN 등 장르 키워드인지 확인
+        if (isGenreKeyword(bracketContent)) {
+          genre = bracketContent;
+          songName = genreBracketMatch[2].trim();
+          bpm = genreBracketMatch[3];
+          composer = composerHint || '';
+          opName = getOPFromEmail(email) || getOPFromComposer(composer) || folderOP || '';
+          return { songName, composer, opName, email, genre, bpm };
+        }
+      }
+
+      // ========== 패턴 0-8: [OP명] 곡명_작곡가들 형식 ==========
+      // 예: [ARTMATIC] 100% (PERCENT)_LUCAS, 박성민, David Simon.mp3
+      const opNameBracketPattern = /^\[([^\]]+)\]\s+(.+?)_(.+)$/;
+      const opNameBracketMatch = nameWithoutExt.replace(emailRegex, '').match(opNameBracketPattern);
+      if (opNameBracketMatch) {
+        const bracketContent = opNameBracketMatch[1].trim();
+        const possibleSongName = opNameBracketMatch[2].trim();
+        const possibleComposers = opNameBracketMatch[3].trim();
+
+        // 대괄호 내용이 OP명으로 매핑되는지 확인
+        const mappedOP = getOPFromComposer(bracketContent);
+        if (mappedOP) {
+          opName = mappedOP;
+          songName = possibleSongName;
+          composer = possibleComposers;
+          return { songName, composer, opName, email, genre, bpm };
+        }
+      }
+
+      // ========== 패턴 0-9: 곡명_작곡가, 작곡가_이메일 형식 ==========
+      // 예: 99-100 Lies_Chris Wahle, MLC_chris@chriswahle.com.mp3
+      const songComposerEmailPattern = /^([^_]+)_([^_@]+)_[a-zA-Z0-9._%+-]+@/;
+      const songComposerEmailMatch = nameWithoutExt.match(songComposerEmailPattern);
+      if (songComposerEmailMatch) {
+        songName = songComposerEmailMatch[1].trim();
+        composer = songComposerEmailMatch[2].trim();
+        opName = getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-10: 작가명 - 곡명 (BPM_장르) ((작곡가들)) final 형식 ==========
+      // 예: John Void - Dance til' we're dead (160bpm_hyper hiphop) ((eniac, Chicok, 해외작가들)) final.mp3
+      const voidPattern = /^([A-Za-z\s]+)\s*-\s*(.+?)\s+\((\d+)bpm[_\s]*([^)]+)\)\s+\(\(([^)]+)\)\)/i;
+      const voidMatch = nameWithoutExt.match(voidPattern);
+      if (voidMatch) {
+        const artistName = voidMatch[1].trim();
+        songName = voidMatch[2].trim();
+        bpm = voidMatch[3];
+        genre = voidMatch[4].trim();
+        composer = voidMatch[5].trim();
+        // John Void → ENIAC
+        opName = getOPFromComposer(artistName) || getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-11: 곡명_BPM_장르_MST 형식 ==========
+      // 예: BOSS ATTITUDE_155_Experimental Bass_MST.mp3
+      const mstPattern = /^(.+?)_(\d+)_([^_]+)_MST$/i;
+      const mstMatch = nameWithoutExt.match(mstPattern);
+      if (mstMatch) {
+        songName = mstMatch[1].trim();
+        bpm = mstMatch[2];
+        genre = mstMatch[3].trim();
+        composer = composerHint || 'ENIAC';
+        opName = 'ENIAC';
         return { songName, composer, opName, email, genre, bpm };
       }
 
@@ -1201,6 +1306,19 @@ writers CC, Ron, JJ
           if (writerName && !currentCredits.includes(writerName)) {
             currentCredits.push(writerName);
           }
+          continue;
+        }
+
+        // 패턴 0-2: 번호 : 곡명 : 저작자 : 퍼블리셔 형식 (SoundGraphics)
+        // 예: "1 : Wake up Dreamers (J) : oni/YUUKI SANO/Tomoki Tamatani : J-Pub (SG)/KIMONO"
+        const sgPattern = /^(\d+)\s*:\s*(.+?)\s*:\s*(.+?)\s*:\s*(.+)$/;
+        const sgMatch = line.match(sgPattern);
+        if (sgMatch) {
+          const songName = sgMatch[2].trim();
+          const composerInfo = sgMatch[3].trim();
+          const publisherInfo = sgMatch[4].trim();
+          // 저작자와 퍼블리셔 정보 합치기
+          credits[songName.toLowerCase()] = `${composerInfo} : ${publisherInfo}`;
           continue;
         }
 
