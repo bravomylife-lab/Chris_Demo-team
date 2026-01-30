@@ -328,9 +328,14 @@
       if (!email) return '';
       const emailLower = email.toLowerCase();
 
-      // 1. 기존 매핑 테이블에서 검색
+      // 1. 정확한 이메일 매칭 우선 (shun@soundgraphics.net → SG)
+      if (EMAIL_TO_OP[emailLower]) {
+        return EMAIL_TO_OP[emailLower];
+      }
+
+      // 2. 부분 문자열 매칭 (기존 로직)
       for (const [key, value] of Object.entries(EMAIL_TO_OP)) {
-        if (emailLower.includes(key.toLowerCase().split('@')[0])) {
+        if (!key.includes('@') && emailLower.includes(key.toLowerCase())) {
           return value;
         }
       }
@@ -531,7 +536,11 @@
 
     // ========== 핵심 파싱 함수 (강력한 패턴 인식) ==========
     const parseFileName = (filename, folderPath = '') => {
-      const nameWithoutExt = filename.replace(/\.(mp3|wav|m4a|flac|aiff)$/i, '');
+      let nameWithoutExt = filename.replace(/\.(mp3|wav|m4a|flac|aiff)$/i, '');
+
+      // SoundGraphics 등 파일명 앞의 번호 제거 (1_Wake up Dreamers, 01 Wake up Dreamers 등)
+      nameWithoutExt = nameWithoutExt.replace(/^(\d+)[\s_-]+/, '');
+
       let songName = '';
       let composer = '';
       let opName = '';
