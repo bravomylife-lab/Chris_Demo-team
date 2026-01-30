@@ -109,6 +109,8 @@
       '전체적인 밸런스가 매우 좋은 곡',
       'Aggressive한 남성스타일',
       '걸크러쉬 여성 스타일',
+      // 중립적 피드백
+      '전반적으로 평이한 데모',
       // 부정적 피드백
       '데모의 퀄리티가 현저히 낮음',
       '송리드와 상이한 데모',
@@ -121,12 +123,13 @@
     // 장르 프리셋 목록
     const GENRE_PRESETS = [
       'Pop', 'K-Pop', 'Ballad', 'K-Ballad', 'R&B', 'Hip-Hop', 'Rock',
-      'Dance', 'EDM', 'Electronic', 'House', 'Trap', 'Drill',
+      'Dance', 'EDM', 'Electronic', 'House', 'Trap',
       'Jazz', 'Soul', 'Funk', 'Disco', 'Reggae', 'Country',
-      'Folk', 'Blues', 'Acoustic', 'Alternative', 'Indie',
+      'Folk', 'Acoustic', 'Alternative', 'Indie',
       'City Pop', 'Synth Pop', 'Future Bass', 'Dubstep',
-      'Lo-Fi', 'Chill', 'Afrobeat', 'Latin', 'Reggaeton',
-      'Urban', 'Retro', 'Hyper', 'Mixx Pop', 'Garage', '2Step', 'OST'
+      'Chill', 'Afrobeat', 'Latin', 'Reggaeton',
+      'Urban', 'Retro', 'Hyper', 'Mixx Pop', 'Garage', '2Step', 'OST',
+      'J-Pop', 'J-Rock', 'Band'
     ];
 
     // 장르 키워드 목록 (자동 분류용)
@@ -242,6 +245,7 @@
       'john void': 'ENIAC',
       'eniac': 'ENIAC',
       '진대호': 'JDH',
+      'chris wahle': 'CW',
       'adam argyle': 'EavesMusic',
       'phil plested': 'EavesMusic',
       'nick hahn': 'EavesMusic',
@@ -591,12 +595,13 @@
 
       // ========== 패턴 0-3: GL Music 형식 ==========
       // 예: 05 - GL Music - Gimmi Gimmi.mp3
-      const glMusicPattern = /^\d+\s*-\s*GL\s*Music\s*-\s*(.+)$/i;
+      // 예: GL Music - Good Girls.mp3
+      const glMusicPattern = /^(?:\d+\s*-\s*)?GL\s*Music\s*-\s*(.+)$/i;
       const glMusicMatch = nameWithoutExt.match(glMusicPattern);
       if (glMusicMatch) {
         songName = glMusicMatch[1].trim();
         opName = 'GL';
-        // 저작자 정보는 크레딧 입력란에서 제공됨
+        // 저작자 정보는 크레딧 입력란에서 제공됨 (Metadata 섹션)
         return { songName, composer, opName, email, genre, bpm };
       }
 
@@ -716,14 +721,15 @@
 
       // ========== 패턴 0-10: 곡명_BPM_장르 (작곡가들) final 형식 (ENIAC) ==========
       // 예: Get Dirty_110bpm_hiphop (eniac, Tricia Hye, Blue Monkey) final.mp3
-      const eniacFinalPattern = /^(.+?)_(\d+)bpm[_\s]*([^(]+)\s+\(([^)]+)\)\s+final/i;
+      // 예: Quiet_120bpm_Hiphop EDM_(eniac & Tricia Hye & Jonathan B.T) final.mp3
+      const eniacFinalPattern = /^(.+?)_(\d+)bpm[_\s]*([^(]+?)[\s_]*\(([^)]+)\)\s+final/i;
       const eniacFinalMatch = nameWithoutExt.match(eniacFinalPattern);
       if (eniacFinalMatch) {
         songName = eniacFinalMatch[1].trim();
         bpm = eniacFinalMatch[2];
         genre = eniacFinalMatch[3].trim();
-        composer = eniacFinalMatch[4].trim();
-        // ENIAC이 포함되어 있으면 OP명은 ENIAC
+        composer = eniacFinalMatch[4].trim().replace(/\s*&\s*/g, ', '); // & → ,
+        // ENIAC이 포함되어 있으면 OP명은 ENIAC, 이메일은 "대표님 전달 DEMO"
         if (/eniac/i.test(composer) || /eniac/i.test(nameWithoutExt)) {
           opName = 'ENIAC';
           email = '대표님 전달 DEMO';
