@@ -142,7 +142,7 @@
       'Ron Irving', 'Dave Pickell', 'Ben Charles', 'Jose Manuel',
       "NU'MAKER", 'I-NORI', 'Gusten Dahlqvist', 'Jes Meinertz',
       'June', 'KWH', 'Andreas', '서의성', '정진욱', '이성혁',
-      '김원', 'Renjin Zhao', 'J.S'  // 추가
+      '김원', 'Renjin Zhao', 'J.S', '배새롬'
     ]);
 
     // 이메일/폴더명 → OP명 매핑 (확장됨)
@@ -172,6 +172,8 @@
       // 추가 국제 퍼블리셔
       'soundgraphics': 'SoundGraphics',
       'admin@soundgraphics.co.kr': 'SoundGraphics',
+      // 신규 매핑
+      'jty9142@gmail.com': 'JYT',
     };
 
     // 이메일 → 저작자 매핑 (자동 저작자 입력용)
@@ -258,6 +260,7 @@
       '주현민': 'Individual',
       '박수석': 'Individual',
       '이성혁': 'JGH',
+      '배새롬': 'BSR',
     };
 
     // 이메일에서 OP명 추출 (확장됨 - 자동 추출 지원)
@@ -1136,13 +1139,20 @@ writers CC, Ron, JJ
         setView('credit');
       };
 
-      // 곡명 정규화 (특수문자 통일, 공백 정리)
+      // 곡명 정규화 (특수문자 통일, 공백 정리, URL/접미사 제거)
       const normalizeSongName = (name) => {
         return name
           .toLowerCase()
-          .replace(/[´`'']/g, "'")  // 다양한 어포스트로피 통일
-          .replace(/[""]/g, '"')    // 따옴표 통일
-          .replace(/\s+/g, ' ')     // 공백 정리
+          // URL 패턴 제거 (www., http://, https:// 등)
+          .replace(/\s*[-–]\s*(www\.|http:\/\/|https:\/\/)[\w./-]+/gi, '')
+          // 이메일 패턴 제거
+          .replace(/\s*[-–]\s*[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,}/gi, '')
+          // 어포스트로피 통일
+          .replace(/[´`'']/g, "'")
+          // 따옴표 통일
+          .replace(/[""]/g, '"')
+          // 공백 정리
+          .replace(/\s+/g, ' ')
           .trim();
       };
 
@@ -1153,16 +1163,21 @@ writers CC, Ron, JJ
 
         if (textToUse.trim()) {
           const credits = parseCreditText(textToUse);
+          console.log('파싱된 크레딧:', credits);
 
           // 정규화된 키로 크레딧 맵 재생성
           const normalizedCredits = {};
           for (const [key, value] of Object.entries(credits)) {
-            normalizedCredits[normalizeSongName(key)] = value;
+            const normalized = normalizeSongName(key);
+            normalizedCredits[normalized] = value;
+            console.log(`크레딧 정규화: "${key}" → "${normalized}"`);
           }
 
           updatedSongs = pendingSongs.map(song => {
             const songNameNormalized = normalizeSongName(song.곡명);
             const matchedCredit = normalizedCredits[songNameNormalized];
+
+            console.log(`곡명 매칭 시도: "${song.곡명}" → "${songNameNormalized}" → ${matchedCredit ? '매칭 성공' : '매칭 실패'}`);
 
             if (matchedCredit) {
               return {
