@@ -160,7 +160,8 @@
       "NU'MAKER", 'I-NORI', 'Gusten Dahlqvist', 'Jes Meinertz',
       'June', 'KWH', 'Andreas', '서의성', '정진욱', '이성혁',
       '김원', 'Renjin Zhao', 'J.S', '배새롬', 'KZ', 'JADE', 'IRIS',
-      'Marldn', 'Oski', 'Lawrence Mace', 'TY', 'ES2', 'Louise Frick Sveen'
+      'Marldn', 'Oski', 'Lawrence Mace', 'TY', 'ES2', 'Louise Frick Sveen',
+      '성환', 'Azsuen', '이은석', 'Silverstone', '김도경', 'DØK'
     ]);
 
     // 이메일/폴더명 → OP명 매핑 (확장됨)
@@ -261,17 +262,31 @@
       "nu'maker": 'SMOB',
       'i-nori': 'SMOB',
       // GL Music (북유럽)
-      'gusten dahlqvist': 'GL Music',
+      'gusten dahlqvist': 'GL',
       'cosmos': 'COS',  // COSMOS → COS
-      'jes meinertz': 'GL Music',
-      'johs': 'GL Music',
-      'deekay': 'GL Music',
-      'david west': 'GL Music',
-      'lasse lindorff': 'GL Music',
-      'svend gudiksen': 'GL Music',
-      'mats valentin': 'GL Music',
-      'jade ell': 'GL Music',
-      'mattias kolstrup': 'GL Music',
+      'jes meinertz': 'GL',
+      'johs': 'GL',
+      'deekay': 'GL',
+      'david west': 'GL',
+      'lasse lindorff': 'GL',
+      'svend gudiksen': 'GL',
+      'mats valentin': 'GL',
+      'jade ell': 'GL',
+      'mattias kolstrup': 'GL',
+      'frans nielsen': 'GL',
+      'anders banke': 'GL',
+      'mathilde nyegaard': 'GL',
+      'tigerspring': 'GL',
+      'olga sundin': 'GL',
+      'the very good': 'GL',
+      'cutfather': 'GL',
+      'frederik jyll': 'GL',
+      'amanda thomsen': 'GL',
+      'lukas visti': 'GL',
+      'renjin': 'GL',
+      'rasmus gregersen': 'GL',
+      'daniel michael victor': 'GL',
+      'gl music': 'GL',
       // Music Combine
       '뮤직컴바인': 'Music Combine',
       'music combine': 'Music Combine',
@@ -290,6 +305,13 @@
       'kz': 'KZ',
       'jade': 'JADE',
       'marldn': 'JADE',
+      // 뮤직컴바인
+      '성환': 'MC.B',
+      'azsuen': 'MC.B',
+      '이은석': 'MC.B',
+      'silverstone': 'MC.B',
+      '김도경': 'MC.B',
+      'døk': 'MC.B',
     };
 
     // 이메일에서 OP명 추출 (확장됨 - 자동 추출 지원)
@@ -506,7 +528,27 @@
       const composerHint = extractComposerHintFromPath(folderPath);
       const folderOP = extractOPFromFolderPath(folderPath);
 
-      // ========== 패턴 0: [작곡가] 날짜 코드 곡명 키/템포 형식 ==========
+      // ========== 패턴 0-1: MC_번호_곡명: 작곡가 형식 (뮤직컴바인) ==========
+      // 예: MC_03882_Breeze: 138BPM_Bbkey_가이드보컬 AI활용_김도경(DØK).mp3
+      const mcPattern = /^MC_\d+_([^:]+)(?::\s*(.+))?/i;
+      const mcMatch = nameWithoutExt.match(mcPattern);
+      if (mcMatch) {
+        songName = mcMatch[1].trim();
+        const restInfo = mcMatch[2] || '';
+
+        // 콜론 뒤 정보에서 작곡가 추출 (괄호 안 영문명 포함)
+        // 예: 김도경(DØK), 성환(Azsuen), 이은석(Silverstone)
+        const composerMatches = restInfo.match(/([가-힣]+\([^)]+\))/g) ||
+                               restInfo.match(/([가-힣]{2,4})/g);
+        if (composerMatches && composerMatches.length > 0) {
+          composer = composerMatches.join(', ');
+        }
+
+        opName = 'MC.B';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-2: [작곡가] 날짜 코드 곡명 키/템포 형식 ==========
       // 예: [high seAson] 251107 MJ1 tell me what T127 Ab.mp3
       const bracketComposerPattern = /^\[([^\]]+)\]\s*\d+\s+[A-Z0-9]+\s+(.+?)\s+T\d+/i;
       const bracketComposerMatch = nameWithoutExt.match(bracketComposerPattern);
@@ -1019,6 +1061,22 @@ writers CC, Ron, JJ
 
         // 섹션 헤더 스킵 (타이틀, 수록성, Metadata, Link, WRITERS DETAILS 등)
         if (/^(타이틀|수록성|수록곡|\(타이틀\)|\(수록성\)|Metadata|Link:|WRITERS DETAILS:|##?\s)/i.test(line)) {
+          continue;
+        }
+
+        // 패턴 0-0: MC_번호_곡명: 저작자 형식 (뮤직컴바인)
+        // 예: MC_03882_Breeze: 138BPM_Bbkey_가이드보컬 AI활용_김도경(DØK)
+        const mcCreditMatch = line.match(/^MC_\d+_([^:]+):\s*(.+)$/i);
+        if (mcCreditMatch) {
+          const songName = mcCreditMatch[1].trim();
+          const composerInfo = mcCreditMatch[2].trim();
+
+          // 저작자 추출: 한글(영문) 패턴
+          const composerMatches = composerInfo.match(/[가-힣]+\([^)]+\)/g) ||
+                                 composerInfo.match(/[가-힣]{2,4}/g);
+          if (composerMatches) {
+            credits[songName.toLowerCase()] = composerMatches.join(', ');
+          }
           continue;
         }
 
