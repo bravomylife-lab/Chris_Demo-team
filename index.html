@@ -1713,7 +1713,7 @@ writers CC, Ron, JJ
       // ★★★ 경로 붙여넣기 처리 (Windows 탐색기에서 "경로로 복사") ★★★
       const handlePathPaste = (pathText) => {
         if (!pathText.trim()) { alert('경로를 입력해주세요.'); return null; }
-        const lines = pathText.split('\n').map(l => l.trim()).filter(l => l);
+        const lines = pathText.split('\n').map(l => l.trim().replace(/^["']+|["']+$/g, '').trim()).filter(l => l);
         const audioLines = lines.filter(l => /\.(mp3|wav|m4a|flac|aiff)$/i.test(l));
         if (audioLines.length === 0) { alert('음원 파일 경로가 없습니다.\n\n지원 형식: MP3, WAV, M4A, FLAC, AIFF\n\n윈도우 탐색기에서 파일 선택 → 우클릭 → "경로로 복사"'); return null; }
 
