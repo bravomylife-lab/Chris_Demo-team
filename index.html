@@ -1659,6 +1659,7 @@ writers CC, Ron, JJ
 
       const folderInputRef = useRef(null);
       const creditTextRef = useRef('');
+      const pathTextRef = useRef('');
 
       const STORAGE_KEY = 'peermusic_demo_reviews_v6';
       const SONGS_KEY = 'peermusic_demo_songs_v6';
@@ -1706,6 +1707,100 @@ writers CC, Ron, JJ
           return matchesSearch;
         });
       }, [songs, reviews, searchTerm, filterStatus]);
+
+      // ★★★ 경로 붙여넣기 처리 (Windows 탐색기에서 "경로로 복사") ★★★
+      const handlePathPaste = (pathText) => {
+        if (!pathText.trim()) { alert('경로를 입력해주세요.'); return null; }
+        const lines = pathText.split('\n').map(l => l.trim()).filter(l => l);
+        const audioLines = lines.filter(l => /\.(mp3|wav|m4a|flac|aiff)$/i.test(l));
+        if (audioLines.length === 0) { alert('음원 파일 경로가 없습니다.\n\n지원 형식: MP3, WAV, M4A, FLAC, AIFF\n\n윈도우 탐색기에서 파일 선택 → 우클릭 → "경로로 복사"'); return null; }
+
+        // 첫 번째 파일 경로에서 아티스트 추출
+        const firstPath = audioLines[0];
+        const detectedArtist = extractArtistFromPath(firstPath);
+        if (detectedArtist && !artistName) setArtistName(detectedArtist);
+
+        const newSongs = audioLines.map((fullPath, idx) => {
+          // Windows 경로에서 파일명 추출: C:\Demo\GL Music\song.mp3 → song.mp3
+          const filename = fullPath.replace(/\\/g, '/').split('/').pop() || fullPath;
+          // 전체 경로에서 폴더 경로 추출
+          const folderPath = fullPath.replace(/\\/g, '/').replace(/\/[^/]+$/, '');
+          const parsed = parseFileName(filename, folderPath);
+
+          // 전체 경로에서 날짜 추출 시도
+          const extractedDate = extractDateFromPath(fullPath);
+          const uploadDate = extractedDate || new Date().toISOString().split('T')[0];
+
+          return {
+            id: Date.now() + idx + Math.random(),
+            곡명: parsed.songName,
+            저작자: parsed.composer,
+            OP명: parsed.opName,
+            이메일: parsed.email,
+            장르: parsed.genre || '',
+            BPM: parsed.bpm || '',
+            원본파일명: filename,
+            원본경로: fullPath,
+            업로드날짜: uploadDate,
+            추가일시: new Date().toISOString()
+          };
+        });
+
+        return newSongs;
+      };
+
+      // 경로 + 크레딧 통합 처리
+      const handlePathAndCreditSubmit = () => {
+        const pathText = pathTextRef.current || '';
+        const creditTextVal = creditTextRef.current || '';
+
+        const newSongs = handlePathPaste(pathText);
+        if (!newSongs) return;
+
+        // 크레딧이 있으면 바로 적용
+        if (creditTextVal.trim()) {
+          const { credits, sgOpNames } = parseCreditText(creditTextVal);
+          console.log('파싱된 크레딧:', credits);
+
+          const normalizedCredits = {};
+          for (const [key, value] of Object.entries(credits)) {
+            normalizedCredits[normalizeSongName(key)] = value;
+          }
+          const normalizedSgOpNames = {};
+          for (const [key, value] of Object.entries(sgOpNames)) {
+            normalizedSgOpNames[normalizeSongName(key)] = value;
+          }
+
+          const updatedSongs = newSongs.map(song => {
+            const songNameNormalized = normalizeSongName(song.곡명);
+            const matchedCredit = normalizedCredits[songNameNormalized];
+            const matchedSgOp = normalizedSgOpNames[songNameNormalized];
+
+            let updatedSong = { ...song };
+            if (matchedSgOp) updatedSong.OP명 = matchedSgOp;
+            if (matchedCredit) {
+              updatedSong.저작자 = matchedCredit;
+              if (!updatedSong.OP명) {
+                const firstComposer = matchedCredit.split(/[,/]/)[0].trim();
+                const composerOP = getOPFromComposer(firstComposer);
+                if (composerOP) updatedSong.OP명 = composerOP;
+              }
+            }
+            return updatedSong;
+          });
+
+          setSongs(prev => [...prev, ...updatedSongs]);
+          alert(`${updatedSongs.length}곡이 추가되었습니다. (크레딧 적용됨)`);
+        } else {
+          setSongs(prev => [...prev, ...newSongs]);
+          alert(`${newSongs.length}곡이 추가되었습니다.`);
+        }
+
+        // 초기화
+        pathTextRef.current = '';
+        creditTextRef.current = '';
+        setView('review');
+      };
 
       // 폴더 업로드 처리
       const handleFolderUpload = async (files) => {
@@ -2125,37 +2220,81 @@ ${recommended.length > 0 ? `<div class="section"><h2>추천곡 (${recommended.le
         }
       };
 
-      // 업로드 화면
+      // PathTextArea - 경로 붙여넣기용 독립 컴포넌트
+      const PathTextArea = React.memo(({ textRef }) => {
+        const [localValue, setLocalValue] = useState('');
+        const handleChange = (e) => { const v = e.target.value; setLocalValue(v); textRef.current = v; };
+        // 붙여넣기 시 줄 수 카운트
+        const lineCount = localValue.split('\n').filter(l => /\.(mp3|wav|m4a|flac|aiff)$/i.test(l.trim())).length;
+        return (
+          <div className="relative">
+            <textarea value={localValue} onChange={handleChange}
+              className="w-full h-48 bg-black/50 text-gray-300 px-4 py-3 rounded-xl border border-gray-800 focus:border-indigo-500 resize-none font-mono text-sm"
+              placeholder={`윈도우 탐색기에서 파일 선택 → 우클릭 → "경로로 복사" 후 여기에 붙여넣기
+
+예시:
+C:\\Users\\demo\\GL Music\\Vendetta.mp3
+C:\\Users\\demo\\GL Music\\Sugar.mp3
+C:\\Users\\demo\\Wavecandy\\JETSKI.mp3`} />
+            {lineCount > 0 && (
+              <span className="absolute top-2 right-3 text-xs text-indigo-400 bg-black/60 px-2 py-1 rounded">{lineCount}곡 감지</span>
+            )}
+          </div>
+        );
+      });
+
+      // 업로드 화면 (통합: 경로 붙여넣기 + 크레딧 + 폴더 업로드)
       const UploadView = () => (
         <div className="min-h-screen flex items-center justify-center p-6 fade-in">
-          <div className="w-full max-w-2xl">
-            <div className="text-center mb-12">
+          <div className="w-full max-w-3xl">
+            <div className="text-center mb-8">
               <h1 className="text-5xl font-bold gradient-text mb-2">PEERMUSIC</h1>
               <p className="text-gray-500 text-lg">DEMO Review System</p>
             </div>
 
-            <div
-              className="upload-zone rounded-3xl p-16 text-center cursor-pointer mb-4"
-              onClick={() => folderInputRef.current?.click()}
-            >
-              <div className="text-6xl mb-6 opacity-60">📂</div>
-              <h2 className="text-2xl font-semibold text-white mb-3">
-                클릭하여 폴더 선택
-              </h2>
-              <p className="text-gray-500">MP3, WAV, M4A, FLAC, AIFF</p>
-              <input
-                ref={folderInputRef}
-                type="file"
-                webkitdirectory=""
-                directory=""
-                multiple
-                onChange={(e) => e.target.files && handleFolderUpload(e.target.files)}
-                className="hidden"
-              />
+            {/* 1. 파일 경로 붙여넣기 (메인 입력) */}
+            <div className="glass rounded-2xl p-6 mb-4">
+              <h3 className="text-white font-semibold mb-2">1. 파일 경로 붙여넣기</h3>
+              <p className="text-gray-500 text-sm mb-3">
+                윈도우 탐색기에서 음원 파일 선택 → 우클릭 → "경로로 복사" → 여기에 붙여넣기
+              </p>
+              <PathTextArea textRef={pathTextRef} />
             </div>
 
+            {/* 2. 추가 크레딧 정보 */}
+            <div className="glass rounded-2xl p-6 mb-4">
+              <h3 className="text-white font-semibold mb-2">2. 추가 크레딧 정보 (선택사항)</h3>
+              <p className="text-gray-500 text-sm mb-3">
+                곡명 + 작곡/작사/편곡 정보, Track Title 형식, 번호 리스트 등
+              </p>
+              <CreditTextArea textRef={creditTextRef} />
+            </div>
+
+            {/* 검토 시작 버튼 */}
+            <button onClick={handlePathAndCreditSubmit}
+              className="w-full btn-primary py-4 rounded-xl text-white font-semibold text-lg mb-4">
+              검토 시작 →
+            </button>
+
+            {/* 폴더 업로드 (보조 옵션) */}
+            <div className="glass rounded-2xl p-4 mb-4">
+              <div className="flex items-center justify-between cursor-pointer" onClick={() => folderInputRef.current?.click()}>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl opacity-60">📂</span>
+                  <div>
+                    <p className="text-gray-400 text-sm font-medium">또는 폴더 직접 업로드</p>
+                    <p className="text-gray-600 text-xs">MP3, WAV, M4A, FLAC, AIFF</p>
+                  </div>
+                </div>
+                <span className="text-gray-600 text-sm">클릭 →</span>
+              </div>
+              <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple
+                onChange={(e) => e.target.files && handleFolderUpload(e.target.files)} className="hidden" />
+            </div>
+
+            {/* 저장된 데이터가 있으면 이어서 검토 */}
             {songs.length > 0 && (
-              <div className="glass rounded-2xl p-6 text-center mb-4">
+              <div className="glass rounded-2xl p-5 text-center mb-4">
                 <p className="text-gray-400 mb-3">저장된 데이터: <span className="text-white font-bold">{songs.length}곡</span> ({reviewedCount}곡 완료)</p>
                 <div className="flex gap-3 justify-center flex-wrap">
                   <button onClick={() => setView('review')} className="btn-primary px-8 py-3 rounded-xl text-white font-medium">
@@ -2184,12 +2323,12 @@ ${recommended.length > 0 ? `<div class="section"><h2>추천곡 (${recommended.le
           <div className="w-full max-w-3xl">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-white mb-2">크레딧 정보 입력</h1>
-              <p className="text-gray-500">업로드된 {pendingSongs.length}곡의 추가 저작자 정보를 입력하세요</p>
+              <p className="text-gray-500">폴더 업로드 {pendingSongs.length}곡 - 추가 저작자 정보를 입력하세요</p>
             </div>
 
             {/* 업로드된 곡 목록 */}
             <div className="glass rounded-2xl p-4 mb-6 max-h-48 overflow-y-auto">
-              <h3 className="text-sm font-medium text-gray-400 mb-3">업로드된 곡 목록</h3>
+              <h3 className="text-sm font-medium text-gray-400 mb-3">감지된 곡 목록 ({pendingSongs.length}곡)</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {pendingSongs.map((song, idx) => (
                   <div key={idx} className="credit-item px-3 py-2 rounded-lg text-sm">
@@ -2202,9 +2341,9 @@ ${recommended.length > 0 ? `<div class="section"><h2>추천곡 (${recommended.le
 
             {/* 크레딧 입력 */}
             <div className="glass rounded-2xl p-6 mb-6">
-              <h3 className="text-white font-medium mb-3">📝 추가 크레딧 정보 (선택사항)</h3>
+              <h3 className="text-white font-medium mb-3">추가 크레딧 정보 (선택사항)</h3>
               <p className="text-gray-500 text-sm mb-4">
-                곡명을 먼저 쓰고, 그 아래에 작곡/작사/편곡 또는 writers 정보를 입력하세요.
+                곡명 + 작곡/작사/편곡 정보를 붙여넣으면 자동 매칭됩니다
               </p>
               <CreditTextArea textRef={creditTextRef} />
             </div>
