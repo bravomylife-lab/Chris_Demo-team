@@ -2080,10 +2080,10 @@ writers CC, Ron, JJ
         reader.readAsText(file);
       };
 
-      // ★ HTML 문자열 생성 헬퍼 (</script> 파싱 충돌 방지를 위해 배열 조립 방식 사용)
+      // ★ HTML 문자열 생성 헬퍼 (script 종료 파싱 충돌 방지를 위해 배열 조립 방식 사용)
       const buildExportHTML = (songList, sessionTitle, date, isDark) => {
         const recommended = songList.filter(s => parseFloat(s.점수 || 0) >= 4.0);
-        const ct = (tag) => '<' + '/' + tag + '>'; // closing tag helper - avoids </script> parser issue
+        const ct = (tag) => '<' + '/' + tag + '>'; // closing tag helper
         const parts = [];
         parts.push('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">');
         parts.push('<meta name="viewport" content="width=device-width,initial-scale=1.0">');
@@ -2282,22 +2282,6 @@ C:\\Users\\demo\\Wavecandy\\JETSKI.mp3`} />
               className="w-full btn-primary py-4 rounded-xl text-white font-semibold text-lg mb-4">
               검토 시작 →
             </button>
-
-            {/* 폴더 업로드 (보조 옵션) */}
-            <div className="glass rounded-2xl p-4 mb-4">
-              <div className="flex items-center justify-between cursor-pointer" onClick={() => folderInputRef.current?.click()}>
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl opacity-60">📂</span>
-                  <div>
-                    <p className="text-gray-400 text-sm font-medium">또는 폴더 직접 업로드</p>
-                    <p className="text-gray-600 text-xs">MP3, WAV, M4A, FLAC, AIFF</p>
-                  </div>
-                </div>
-                <span className="text-gray-600 text-sm">클릭 →</span>
-              </div>
-              <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple
-                onChange={(e) => e.target.files && handleFolderUpload(e.target.files)} className="hidden" />
-            </div>
 
             {/* 저장된 데이터가 있으면 이어서 검토 */}
             {songs.length > 0 && (
