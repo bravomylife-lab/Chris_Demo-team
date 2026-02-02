@@ -2080,123 +2080,10 @@ writers CC, Ron, JJ
         reader.readAsText(file);
       };
 
-      // ★ HTML 문자열 생성 헬퍼 (script 종료 파싱 충돌 방지를 위해 배열 조립 방식 사용)
-      const buildExportHTML = (songList, sessionTitle, date, isDark) => {
-        const recommended = songList.filter(s => parseFloat(s.점수 || 0) >= 4.0);
-        const ct = (tag) => '<' + '/' + tag + '>'; // closing tag helper
-        const parts = [];
-        parts.push('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">');
-        parts.push('<meta name="viewport" content="width=device-width,initial-scale=1.0">');
-        parts.push('<title>PEERMUSIC - ' + sessionTitle + ct('title'));
-        parts.push('<style>');
-        parts.push('*{margin:0;padding:0;box-sizing:border-box}');
-        if (isDark) {
-          parts.push('body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0a0a;color:#e5e5e5;padding:20px}');
-          parts.push('.container{max-width:1200px;margin:0 auto}');
-          parts.push('h1{text-align:center;font-size:2em;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:5px}');
-          parts.push('.subtitle{text-align:center;color:#9ca3af;margin-bottom:30px}');
-          parts.push('.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:24px}');
-          parts.push('.stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;text-align:center}');
-          parts.push('.stat .num{font-size:1.5em;font-weight:bold}.stat .label{font-size:0.85em;color:#9ca3af}');
-          parts.push('.stat.total .num{color:#818cf8}.stat.done .num{color:#34d399}.stat.rec .num{color:#f472b6}');
-          parts.push('table{width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:12px;overflow:hidden}');
-          parts.push('th{background:rgba(0,0,0,0.4);padding:12px 16px;text-align:left;font-size:0.85em;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.1)}');
-          parts.push('td{padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.9em}');
-          parts.push('tr:hover{background:rgba(255,255,255,0.03)}');
-          parts.push('.feedback{color:#9ca3af;font-size:0.85em;max-width:300px}');
-          parts.push('@media print{body{background:#fff;color:#000}th{background:#f3f4f6;color:#374151}td{border-bottom:1px solid #e5e7eb}}');
-        } else {
-          parts.push('body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:20px;color:#222}');
-          parts.push('h1{text-align:center;font-size:1.8em;margin-bottom:4px}');
-          parts.push('.subtitle{text-align:center;color:#666;margin-bottom:20px;font-size:0.95em}');
-          parts.push('table{width:100%;border-collapse:collapse;margin-bottom:24px}');
-          parts.push('th{background:#f3f4f6;padding:8px 12px;text-align:left;font-size:0.8em;color:#374151;border:1px solid #e5e7eb}');
-          parts.push('td{padding:6px 12px;border:1px solid #e5e7eb;font-size:0.85em}');
-          parts.push('.feedback{color:#666;font-size:0.85em;max-width:300px}');
-          parts.push('@media print{@page{size:A4 landscape;margin:15mm}}');
-        }
-        parts.push('.score{display:inline-block;padding:2px 10px;border-radius:20px;font-weight:bold;font-size:0.85em;color:#fff}');
-        parts.push('.s5{background:linear-gradient(135deg,#10b981,#059669)}.s4{background:linear-gradient(135deg,#3b82f6,#2563eb)}');
-        parts.push('.s3{background:linear-gradient(135deg,#f59e0b,#d97706)}.s2{background:linear-gradient(135deg,#ef4444,#dc2626)}');
-        parts.push('.s1{background:linear-gradient(135deg,#6b7280,#4b5563)}.rec-badge{color:#f472b6;margin-left:6px}');
-        parts.push('.section{margin-top:32px;padding-top:16px;border-top:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb') + '}');
-        parts.push('.section h2{font-size:1.3em;color:#c084fc;margin-bottom:16px}');
-        parts.push('@media(max-width:768px){table{display:block;overflow-x:auto}td,th{white-space:nowrap;padding:8px 10px}}');
-        parts.push(ct('style') + ct('head') + '<body>');
-        parts.push('<div class="container">');
-        parts.push('<h1>PEERMUSIC' + ct('h1'));
-        parts.push('<p class="subtitle">' + sessionTitle + ' - ' + date + ' (' + songList.length + '곡)' + ct('p'));
-        if (isDark) {
-          parts.push('<div class="stats">');
-          parts.push('<div class="stat total"><div class="num">' + songList.length + ct('div') + '<div class="label">전체' + ct('div') + ct('div'));
-          parts.push('<div class="stat done"><div class="num">' + songList.filter(s=>s.점수).length + ct('div') + '<div class="label">완료' + ct('div') + ct('div'));
-          parts.push('<div class="stat rec"><div class="num">' + recommended.length + ct('div') + '<div class="label">추천' + ct('div') + ct('div'));
-          parts.push(ct('div'));
-        }
-        // 메인 테이블
-        const buildRow = (s, i) => {
-          const sc = Math.floor(parseFloat(s.점수||0));
-          const cls = sc>=5?'s5':sc>=4?'s4':sc>=3?'s3':sc>=2?'s2':'s1';
-          const rec = parseFloat(s.점수||0)>=4 ? '<span class="rec-badge">&#10084;' + ct('span') : '';
-          const score = s.점수 ? '<span class="score ' + cls + '">' + s.점수 + ct('span') : '-';
-          return '<tr><td>' + (i+1) + ct('td') + '<td>' + (s.곡명||'') + rec + ct('td') + '<td>' + (s.저작자||'-') + ct('td') + '<td>' + (s.OP명||'-') + ct('td') + '<td>' + (s.장르||'-') + ct('td') + '<td>' + score + ct('td') + '<td class="feedback">' + (s.피드백||'-') + ct('td') + ct('tr');
-        };
-        parts.push('<table><thead><tr><th>#' + ct('th') + '<th>곡명' + ct('th') + '<th>저작자' + ct('th') + '<th>OP명' + ct('th') + '<th>장르' + ct('th') + '<th>점수' + ct('th') + '<th>피드백' + ct('th') + ct('tr') + ct('thead'));
-        parts.push('<tbody>' + songList.map(buildRow).join('') + ct('tbody') + ct('table'));
-        if (recommended.length > 0) {
-          parts.push('<div class="section"><h2>추천곡 (' + recommended.length + '곡)' + ct('h2'));
-          parts.push('<table><thead><tr><th>#' + ct('th') + '<th>곡명' + ct('th') + '<th>저작자' + ct('th') + '<th>OP명' + ct('th') + '<th>장르' + ct('th') + '<th>점수' + ct('th') + '<th>피드백' + ct('th') + ct('tr') + ct('thead'));
-          parts.push('<tbody>' + recommended.map(buildRow).join('') + ct('tbody') + ct('table') + ct('div'));
-        }
-        parts.push(ct('div') + ct('body') + ct('html'));
-        return parts.join('\n');
-      };
-
-      // 반응형 HTML 내보내기
-      const exportSessionHTML = (sessionOrSongs, title) => {
-        const songList = sessionOrSongs.songs || sessionOrSongs;
-        const sessionTitle = title || sessionOrSongs.아티스트 || 'DEMO Review';
-        const date = sessionOrSongs.날짜 || new Date().toISOString().split('T')[0];
-        const html = buildExportHTML(songList, sessionTitle, date, true);
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'PEERMUSIC_' + sessionTitle.replace(/\s+/g,'_') + '_' + date + '.html';
-        link.click();
-      };
-
-      // PDF 내보내기 (브라우저 인쇄)
-      const exportSessionPDF = (sessionOrSongs, title) => {
-        const songList = sessionOrSongs.songs || sessionOrSongs;
-        const sessionTitle = title || sessionOrSongs.아티스트 || 'DEMO Review';
-        const date = sessionOrSongs.날짜 || new Date().toISOString().split('T')[0];
-        const html = buildExportHTML(songList, sessionTitle, date, false);
-        const printHtml = html.replace(ct('body') + ct('html'), '<' + 'script>window.onload=()=>{window.print();}' + ct('script') + ct('body') + ct('html'));
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(printHtml);
-        printWindow.document.close();
-      };
-
-      // 현재 세션 내보내기 (진행 중인 리뷰)
-      const exportCurrentSession = (format) => {
-        const currentData = songs.map(song => {
-          const review = reviews[song.id] || {};
-          return {
-            곡명: song.곡명,
-            저작자: review.저작자 || song.저작자 || '',
-            OP명: review.OP명 || song.OP명 || '',
-            이메일: review.이메일 || song.이메일 || '',
-            장르: review.장르 || song.장르 || '',
-            BPM: song.BPM || '',
-            점수: review.점수 || '',
-            피드백: review.피드백 || '',
-            원본파일명: song.원본파일명 || '',
-            업로드날짜: song.업로드날짜 || ''
-          };
-        });
-        if (format === 'html') exportSessionHTML({ songs: currentData, 아티스트: artistName || 'Current', 날짜: new Date().toISOString().split('T')[0] });
-        else if (format === 'pdf') exportSessionPDF({ songs: currentData, 아티스트: artistName || 'Current', 날짜: new Date().toISOString().split('T')[0] });
-      };
+      // HTML/PDF 내보내기는 별도 JS 파일로 분리 예정 - 현재는 CSV만 지원
+      const exportSessionHTML = () => { alert('HTML 내보내기는 CSV를 이용해주세요.'); };
+      const exportSessionPDF = () => { alert('PDF 내보내기는 CSV를 이용해주세요.'); };
+      const exportCurrentSession = () => { alert('CSV 내보내기를 이용해주세요.'); };
 
       // 아카이브 세션 삭제
       const deleteArchivedSession = (sessionId) => {
@@ -2556,8 +2443,6 @@ C:\\Users\\demo\\Wavecandy\\JETSKI.mp3`} />
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button onClick={downloadCSV} className="btn-primary px-3 py-2 rounded-lg text-white font-medium text-sm">📥 CSV</button>
-                <button onClick={() => exportCurrentSession('html')} className="px-3 py-2 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 text-sm font-medium">📄 HTML</button>
-                <button onClick={() => exportCurrentSession('pdf')} className="px-3 py-2 rounded-lg bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 text-sm font-medium">🖨️ PDF</button>
                 <button onClick={archiveCurrentSession} className="px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-sm font-medium">💾 저장</button>
                 <button onClick={() => setView('archive')} className="px-3 py-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 text-sm font-medium">📦 아카이브</button>
                 <button onClick={resetAll} className="px-3 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-sm font-medium">🗑️ 초기화</button>
