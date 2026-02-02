@@ -1663,19 +1663,25 @@ writers CC, Ron, JJ
       const STORAGE_KEY = 'peermusic_demo_reviews_v6';
       const SONGS_KEY = 'peermusic_demo_songs_v6';
       const META_KEY = 'peermusic_demo_meta_v6';
+      const ARCHIVE_KEY = 'peermusic_demo_archive_v1';
+      const [archivedSessions, setArchivedSessions] = useState([]);
+      const [archiveSearch, setArchiveSearch] = useState('');
 
       useEffect(() => {
         const savedReviews = localStorage.getItem(STORAGE_KEY);
         const savedSongs = localStorage.getItem(SONGS_KEY);
         const savedMeta = localStorage.getItem(META_KEY);
+        const savedArchive = localStorage.getItem(ARCHIVE_KEY);
         if (savedReviews) try { setReviews(JSON.parse(savedReviews)); } catch (e) {}
         if (savedSongs) try { const s = JSON.parse(savedSongs); setSongs(s); if (s.length > 0) setView('review'); } catch (e) {}
         if (savedMeta) try { const m = JSON.parse(savedMeta); setArtistName(m.artistName || ''); } catch (e) {}
+        if (savedArchive) try { setArchivedSessions(JSON.parse(savedArchive)); } catch (e) {}
       }, []);
 
       useEffect(() => { if (Object.keys(reviews).length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(reviews)); }, [reviews]);
       useEffect(() => { if (songs.length > 0) localStorage.setItem(SONGS_KEY, JSON.stringify(songs)); }, [songs]);
       useEffect(() => { localStorage.setItem(META_KEY, JSON.stringify({ artistName })); }, [artistName]);
+      useEffect(() => { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivedSessions)); }, [archivedSessions]);
 
       const currentSong = songs[currentIndex] || null;
       const currentReview = currentSong ? (reviews[currentSong.id] || {
@@ -1915,8 +1921,205 @@ writers CC, Ron, JJ
         } catch (error) { alert('다운로드 실패: ' + error.message); }
       };
 
+      // ★★★ 세션 아카이브 (완료된 리뷰 데이터 영구 저장) ★★★
+      const archiveCurrentSession = () => {
+        if (songs.length === 0) { alert('저장할 데이터가 없습니다.'); return; }
+        const today = new Date().toISOString().split('T')[0];
+        const sessionData = {
+          id: Date.now(),
+          날짜: today,
+          아티스트: artistName || '미지정',
+          총곡수: songs.length,
+          완료곡수: songs.filter(s => reviews[s.id]?.점수).length,
+          추천곡수: songs.filter(s => parseFloat(reviews[s.id]?.점수 || 0) >= 4.0).length,
+          songs: songs.map(song => {
+            const review = reviews[song.id] || {};
+            return {
+              곡명: song.곡명,
+              저작자: review.저작자 || song.저작자 || '',
+              OP명: review.OP명 || song.OP명 || '',
+              이메일: review.이메일 || song.이메일 || '',
+              장르: review.장르 || song.장르 || '',
+              BPM: song.BPM || '',
+              점수: review.점수 || '',
+              피드백: review.피드백 || '',
+              원본파일명: song.원본파일명 || '',
+              업로드날짜: song.업로드날짜 || today
+            };
+          })
+        };
+        setArchivedSessions(prev => [sessionData, ...prev]);
+        alert(`"${sessionData.아티스트}" 세션 (${sessionData.총곡수}곡) 아카이브 저장 완료!`);
+      };
+
+      // JSON 내보내기 (전체 아카이브 백업)
+      const exportArchiveJSON = () => {
+        const data = { exportDate: new Date().toISOString(), sessions: archivedSessions };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `PEERMUSIC_Archive_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+      };
+
+      // JSON 가져오기 (아카이브 복원)
+      const importArchiveJSON = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            if (data.sessions && Array.isArray(data.sessions)) {
+              setArchivedSessions(prev => {
+                const existingIds = new Set(prev.map(s => s.id));
+                const newSessions = data.sessions.filter(s => !existingIds.has(s.id));
+                return [...newSessions, ...prev];
+              });
+              alert(`${data.sessions.length}개 세션 가져오기 완료!`);
+            }
+          } catch (err) { alert('파일 형식이 올바르지 않습니다.'); }
+        };
+        reader.readAsText(file);
+      };
+
+      // 반응형 HTML 내보내기 (특정 세션 또는 검색 결과)
+      const exportSessionHTML = (sessionOrSongs, title) => {
+        const songList = sessionOrSongs.songs || sessionOrSongs;
+        const sessionTitle = title || sessionOrSongs.아티스트 || 'DEMO Review';
+        const date = sessionOrSongs.날짜 || new Date().toISOString().split('T')[0];
+        const recommended = songList.filter(s => parseFloat(s.점수 || 0) >= 4.0);
+        const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PEERMUSIC - ${sessionTitle}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#e5e5e5;padding:20px}
+.container{max-width:1200px;margin:0 auto}
+h1{text-align:center;font-size:2em;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:5px}
+.subtitle{text-align:center;color:#9ca3af;margin-bottom:30px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:24px}
+.stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;text-align:center}
+.stat .num{font-size:1.5em;font-weight:bold}.stat .label{font-size:0.85em;color:#9ca3af}
+.stat.total .num{color:#818cf8}.stat.done .num{color:#34d399}.stat.rec .num{color:#f472b6}
+table{width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:12px;overflow:hidden}
+th{background:rgba(0,0,0,0.4);padding:12px 16px;text-align:left;font-size:0.85em;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.1)}
+td{padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.9em}
+tr:hover{background:rgba(255,255,255,0.03)}
+.score{display:inline-block;padding:2px 10px;border-radius:20px;font-weight:bold;font-size:0.85em;color:#fff}
+.s5{background:linear-gradient(135deg,#10b981,#059669)}.s4{background:linear-gradient(135deg,#3b82f6,#2563eb)}
+.s3{background:linear-gradient(135deg,#f59e0b,#d97706)}.s2{background:linear-gradient(135deg,#ef4444,#dc2626)}
+.s1{background:linear-gradient(135deg,#6b7280,#4b5563)}
+.rec-badge{color:#f472b6;margin-left:6px}
+.section{margin-top:32px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1)}
+.section h2{font-size:1.3em;color:#c084fc;margin-bottom:16px}
+.feedback{color:#9ca3af;font-size:0.85em;max-width:300px}
+@media print{body{background:#fff;color:#000}th{background:#f3f4f6;color:#374151}td{border-bottom:1px solid #e5e7eb}
+.score{color:#000!important}.stat{border:1px solid #e5e7eb}}
+@media(max-width:768px){table{display:block;overflow-x:auto}td,th{white-space:nowrap;padding:8px 10px}}
+</style></head><body>
+<div class="container">
+<h1>PEERMUSIC</h1>
+<p class="subtitle">${sessionTitle} - ${date} (${songList.length}곡)</p>
+<div class="stats">
+<div class="stat total"><div class="num">${songList.length}</div><div class="label">전체</div></div>
+<div class="stat done"><div class="num">${songList.filter(s=>s.점수).length}</div><div class="label">완료</div></div>
+<div class="stat rec"><div class="num">${recommended.length}</div><div class="label">추천</div></div>
+</div>
+<table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead>
+<tbody>${songList.map((s,i) => {
+  const sc = Math.floor(parseFloat(s.점수||0));
+  const cls = sc>=5?'s5':sc>=4?'s4':sc>=3?'s3':sc>=2?'s2':'s1';
+  return `<tr><td>${i+1}</td><td>${s.곡명||''}${parseFloat(s.점수||0)>=4?'<span class="rec-badge">&#10084;</span>':''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td>${s.점수?`<span class="score ${cls}">${s.점수}</span>`:'-'}</td><td class="feedback">${s.피드백||'-'}</td></tr>`;
+}).join('')}</tbody></table>
+${recommended.length > 0 ? `<div class="section"><h2>추천곡 (4.0+)</h2><table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead><tbody>${recommended.map((s,i) => {
+  const sc = Math.floor(parseFloat(s.점수||0));
+  const cls = sc>=5?'s5':sc>=4?'s4':'s3';
+  return `<tr><td>${i+1}</td><td>${s.곡명||''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td><span class="score ${cls}">${s.점수}</span></td><td class="feedback">${s.피드백||'-'}</td></tr>`;
+}).join('')}</tbody></table></div>` : ''}
+</div></body></html>`;
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `PEERMUSIC_${sessionTitle.replace(/\s+/g,'_')}_${date}.html`;
+        link.click();
+      };
+
+      // PDF 내보내기 (브라우저 인쇄)
+      const exportSessionPDF = (sessionOrSongs, title) => {
+        const songList = sessionOrSongs.songs || sessionOrSongs;
+        const sessionTitle = title || sessionOrSongs.아티스트 || 'DEMO Review';
+        const date = sessionOrSongs.날짜 || new Date().toISOString().split('T')[0];
+        const recommended = songList.filter(s => parseFloat(s.점수 || 0) >= 4.0);
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>PEERMUSIC - ${sessionTitle}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:20px;color:#222}
+h1{text-align:center;font-size:1.8em;margin-bottom:4px}
+.subtitle{text-align:center;color:#666;margin-bottom:20px;font-size:0.95em}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
+th{background:#f3f4f6;padding:8px 12px;text-align:left;font-size:0.8em;color:#374151;border:1px solid #e5e7eb}
+td{padding:6px 12px;border:1px solid #e5e7eb;font-size:0.85em}
+.section{margin-top:24px;page-break-before:auto}
+.section h2{font-size:1.2em;color:#6366f1;margin-bottom:12px;border-bottom:2px solid #6366f1;padding-bottom:4px}
+@media print{@page{size:A4 landscape;margin:15mm}}
+</style></head><body>
+<h1>PEERMUSIC DEMO Review</h1>
+<p class="subtitle">${sessionTitle} | ${date} | ${songList.length}곡</p>
+<table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead>
+<tbody>${songList.map((s,i) => `<tr><td>${i+1}</td><td>${s.곡명||''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td>${s.점수||'-'}</td><td>${s.피드백||'-'}</td></tr>`).join('')}</tbody></table>
+${recommended.length > 0 ? `<div class="section"><h2>추천곡 (${recommended.length}곡)</h2><table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead><tbody>${recommended.map((s,i) => `<tr><td>${i+1}</td><td>${s.곡명||''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td>${s.점수}</td><td>${s.피드백||'-'}</td></tr>`).join('')}</tbody></table></div>` : ''}
+<script>window.onload=()=>{window.print();}</script>
+</body></html>`);
+        printWindow.document.close();
+      };
+
+      // 현재 세션 내보내기 (진행 중인 리뷰)
+      const exportCurrentSession = (format) => {
+        const currentData = songs.map(song => {
+          const review = reviews[song.id] || {};
+          return {
+            곡명: song.곡명,
+            저작자: review.저작자 || song.저작자 || '',
+            OP명: review.OP명 || song.OP명 || '',
+            이메일: review.이메일 || song.이메일 || '',
+            장르: review.장르 || song.장르 || '',
+            BPM: song.BPM || '',
+            점수: review.점수 || '',
+            피드백: review.피드백 || '',
+            원본파일명: song.원본파일명 || '',
+            업로드날짜: song.업로드날짜 || ''
+          };
+        });
+        if (format === 'html') exportSessionHTML({ songs: currentData, 아티스트: artistName || 'Current', 날짜: new Date().toISOString().split('T')[0] });
+        else if (format === 'pdf') exportSessionPDF({ songs: currentData, 아티스트: artistName || 'Current', 날짜: new Date().toISOString().split('T')[0] });
+      };
+
+      // 아카이브 세션 삭제
+      const deleteArchivedSession = (sessionId) => {
+        if (confirm('이 세션을 삭제하시겠습니까?')) {
+          setArchivedSessions(prev => prev.filter(s => s.id !== sessionId));
+        }
+      };
+
+      // 아카이브에서 검색
+      const searchArchive = (term) => {
+        if (!term) return archivedSessions;
+        const lower = term.toLowerCase();
+        return archivedSessions.filter(session =>
+          session.아티스트.toLowerCase().includes(lower) ||
+          session.날짜.includes(lower) ||
+          session.songs.some(s =>
+            (s.곡명 || '').toLowerCase().includes(lower) ||
+            (s.저작자 || '').toLowerCase().includes(lower) ||
+            (s.OP명 || '').toLowerCase().includes(lower)
+          )
+        );
+      };
+
       const resetAll = () => {
-        if (confirm('모든 데이터를 초기화하시겠습니까?')) {
+        if (confirm('모든 데이터를 초기화하시겠습니까? (아카이브 데이터는 유지됩니다)')) {
           setSongs([]); setReviews({}); setCurrentIndex(0); setView('upload'); setArtistName('');
           localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(SONGS_KEY);
         }
@@ -1954,7 +2157,7 @@ writers CC, Ron, JJ
             {songs.length > 0 && (
               <div className="glass rounded-2xl p-6 text-center mb-4">
                 <p className="text-gray-400 mb-3">저장된 데이터: <span className="text-white font-bold">{songs.length}곡</span> ({reviewedCount}곡 완료)</p>
-                <div className="flex gap-3 justify-center">
+                <div className="flex gap-3 justify-center flex-wrap">
                   <button onClick={() => setView('review')} className="btn-primary px-8 py-3 rounded-xl text-white font-medium">
                     이어서 검토하기 →
                   </button>
@@ -1962,6 +2165,14 @@ writers CC, Ron, JJ
                     🗑️ 초기화
                   </button>
                 </div>
+              </div>
+            )}
+
+            {archivedSessions.length > 0 && (
+              <div className="glass rounded-2xl p-4 text-center">
+                <button onClick={() => setView('archive')} className="text-purple-400 hover:text-purple-300 font-medium">
+                  📦 아카이브 ({archivedSessions.length}개 세션, {archivedSessions.reduce((sum, s) => sum + s.songs.length, 0)}곡)
+                </button>
               </div>
             )}
           </div>
@@ -2053,6 +2264,7 @@ writers CC, Ron, JJ
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setView('list')} className="px-4 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10">📋 목록</button>
+                  <button onClick={() => setView('archive')} className="px-4 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10">📦 아카이브</button>
                   <button onClick={downloadCSV} className="btn-primary px-4 py-2 rounded-lg text-white font-medium">📥 CSV</button>
                 </div>
               </div>
@@ -2212,9 +2424,13 @@ writers CC, Ron, JJ
                 <button onClick={() => setView('review')} className="text-gray-400 hover:text-white">← 검토</button>
                 <h1 className="text-xl font-bold text-white">전체 목록 ({filteredSongs.length}곡)</h1>
               </div>
-              <div className="flex gap-3">
-                <button onClick={downloadCSV} className="btn-primary px-4 py-2 rounded-lg text-white font-medium">📥 CSV</button>
-                <button onClick={resetAll} className="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30">🗑️ 초기화</button>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={downloadCSV} className="btn-primary px-3 py-2 rounded-lg text-white font-medium text-sm">📥 CSV</button>
+                <button onClick={() => exportCurrentSession('html')} className="px-3 py-2 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 text-sm font-medium">📄 HTML</button>
+                <button onClick={() => exportCurrentSession('pdf')} className="px-3 py-2 rounded-lg bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 text-sm font-medium">🖨️ PDF</button>
+                <button onClick={archiveCurrentSession} className="px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-sm font-medium">💾 저장</button>
+                <button onClick={() => setView('archive')} className="px-3 py-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 text-sm font-medium">📦 아카이브</button>
+                <button onClick={resetAll} className="px-3 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-sm font-medium">🗑️ 초기화</button>
               </div>
             </div>
           </div>
@@ -2294,12 +2510,126 @@ writers CC, Ron, JJ
         </div>
       );
 
+      // ★★★ 아카이브 화면 (저장된 세션 관리, 검색, 내보내기) ★★★
+      const ArchiveView = () => {
+        const filtered = searchArchive(archiveSearch);
+        const [expandedId, setExpandedId] = useState(null);
+        const jsonInputRef = useRef(null);
+
+        return (
+          <div className="max-w-6xl mx-auto p-4 md:p-6 fade-in">
+            <div className="glass rounded-2xl p-4 mb-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setView(songs.length > 0 ? 'review' : 'upload')} className="text-gray-400 hover:text-white">← 돌아가기</button>
+                  <h1 className="text-xl font-bold text-white">데이터 아카이브 ({archivedSessions.length}개 세션)</h1>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={archiveCurrentSession} disabled={songs.length === 0}
+                    className="px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 text-sm font-medium">
+                    💾 현재 세션 저장
+                  </button>
+                  <button onClick={exportArchiveJSON} disabled={archivedSessions.length === 0}
+                    className="px-3 py-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 disabled:opacity-40 text-sm font-medium">
+                    📤 JSON 백업
+                  </button>
+                  <button onClick={() => jsonInputRef.current?.click()}
+                    className="px-3 py-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 text-sm font-medium">
+                    📥 JSON 복원
+                  </button>
+                  <input ref={jsonInputRef} type="file" accept=".json" onChange={importArchiveJSON} className="hidden" />
+                </div>
+              </div>
+            </div>
+
+            <div className="glass rounded-2xl p-4 mb-4">
+              <input type="text" value={archiveSearch} onChange={(e) => setArchiveSearch(e.target.value)}
+                className="w-full bg-black/30 text-white px-4 py-2 rounded-xl border border-gray-800 focus:border-indigo-500"
+                placeholder="🔍 곡명, 저작자, OP명, 아티스트, 날짜로 검색..." />
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="glass rounded-2xl p-12 text-center">
+                <p className="text-4xl mb-4 opacity-60">📦</p>
+                <p className="text-gray-400">{archivedSessions.length === 0 ? '저장된 세션이 없습니다. 리뷰 완료 후 "현재 세션 저장" 버튼을 눌러주세요.' : '검색 결과가 없습니다.'}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filtered.map(session => (
+                  <div key={session.id} className="glass rounded-2xl overflow-hidden">
+                    <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-white/5"
+                      onClick={() => setExpandedId(expandedId === session.id ? null : session.id)}>
+                      <div className="flex items-center gap-4">
+                        <span className="text-2xl">{expandedId === session.id ? '📂' : '📁'}</span>
+                        <div>
+                          <h3 className="text-white font-semibold">{session.아티스트}</h3>
+                          <p className="text-sm text-gray-500">{session.날짜} | {session.총곡수}곡 | 완료 {session.완료곡수}곡 | 추천 {session.추천곡수}곡</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={(e) => { e.stopPropagation(); exportSessionHTML(session); }}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 text-xs font-medium">HTML</button>
+                        <button onClick={(e) => { e.stopPropagation(); exportSessionPDF(session); }}
+                          className="px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 text-xs font-medium">PDF</button>
+                        <button onClick={(e) => { e.stopPropagation(); deleteArchivedSession(session.id); }}
+                          className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs font-medium">삭제</button>
+                      </div>
+                    </div>
+                    {expandedId === session.id && (
+                      <div className="border-t border-gray-800 overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-black/30">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs text-gray-500">#</th>
+                              <th className="px-3 py-2 text-left text-xs text-gray-500">곡명</th>
+                              <th className="px-3 py-2 text-left text-xs text-gray-500">저작자</th>
+                              <th className="px-3 py-2 text-left text-xs text-gray-500">OP명</th>
+                              <th className="px-3 py-2 text-left text-xs text-gray-500">장르</th>
+                              <th className="px-3 py-2 text-center text-xs text-gray-500">점수</th>
+                              <th className="px-3 py-2 text-left text-xs text-gray-500">피드백</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {session.songs.map((s, i) => {
+                              const isRec = parseFloat(s.점수 || 0) >= 4.0;
+                              return (
+                                <tr key={i} className="border-t border-gray-800/50 hover:bg-white/3">
+                                  <td className="px-3 py-2 text-xs text-gray-600">{i + 1}</td>
+                                  <td className="px-3 py-2 text-sm text-white">{s.곡명}{isRec && <span className="ml-1 text-rose-400">&#10084;</span>}</td>
+                                  <td className="px-3 py-2 text-xs text-gray-400">{s.저작자 || '-'}</td>
+                                  <td className="px-3 py-2 text-xs text-gray-400">{s.OP명 || '-'}</td>
+                                  <td className="px-3 py-2 text-xs text-gray-400">{s.장르 || '-'}</td>
+                                  <td className="px-3 py-2 text-center">
+                                    {s.점수 && <span className={`px-2 py-0.5 rounded-full text-xs font-bold text-white bg-gradient-to-r ${getScoreColor(s.점수)}`}>{s.점수}</span>}
+                                  </td>
+                                  <td className="px-3 py-2 text-xs text-gray-500 max-w-[200px] truncate">{s.피드백 || '-'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 glass rounded-xl p-4 text-center text-sm text-gray-500">
+              총 {archivedSessions.reduce((sum, s) => sum + s.songs.length, 0)}곡 |
+              localStorage 사용량: {(new Blob([JSON.stringify(archivedSessions)]).size / 1024).toFixed(1)}KB / 5,120KB
+            </div>
+          </div>
+        );
+      };
+
       return (
         <div className="min-h-screen">
           {view === 'upload' && UploadView()}
           {view === 'credit' && CreditView()}
           {view === 'review' && ReviewView()}
           {view === 'list' && ListView()}
+          {view === 'archive' && ArchiveView()}
         </div>
       );
     }
