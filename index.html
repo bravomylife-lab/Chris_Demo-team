@@ -1667,6 +1667,8 @@ writers CC, Ron, JJ
       const ARCHIVE_KEY = 'peermusic_demo_archive_v1';
       const [archivedSessions, setArchivedSessions] = useState([]);
       const [archiveSearch, setArchiveSearch] = useState('');
+      const [archiveExpandedId, setArchiveExpandedId] = useState(null);
+      const jsonImportRef = useRef(null);
 
       useEffect(() => {
         const savedReviews = localStorage.getItem(STORAGE_KEY);
@@ -2078,65 +2080,88 @@ writers CC, Ron, JJ
         reader.readAsText(file);
       };
 
-      // 반응형 HTML 내보내기 (특정 세션 또는 검색 결과)
+      // ★ HTML 문자열 생성 헬퍼 (</script> 파싱 충돌 방지를 위해 배열 조립 방식 사용)
+      const buildExportHTML = (songList, sessionTitle, date, isDark) => {
+        const recommended = songList.filter(s => parseFloat(s.점수 || 0) >= 4.0);
+        const ct = (tag) => '<' + '/' + tag + '>'; // closing tag helper - avoids </script> parser issue
+        const parts = [];
+        parts.push('<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">');
+        parts.push('<meta name="viewport" content="width=device-width,initial-scale=1.0">');
+        parts.push('<title>PEERMUSIC - ' + sessionTitle + ct('title'));
+        parts.push('<style>');
+        parts.push('*{margin:0;padding:0;box-sizing:border-box}');
+        if (isDark) {
+          parts.push('body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0a0a;color:#e5e5e5;padding:20px}');
+          parts.push('.container{max-width:1200px;margin:0 auto}');
+          parts.push('h1{text-align:center;font-size:2em;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:5px}');
+          parts.push('.subtitle{text-align:center;color:#9ca3af;margin-bottom:30px}');
+          parts.push('.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:24px}');
+          parts.push('.stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;text-align:center}');
+          parts.push('.stat .num{font-size:1.5em;font-weight:bold}.stat .label{font-size:0.85em;color:#9ca3af}');
+          parts.push('.stat.total .num{color:#818cf8}.stat.done .num{color:#34d399}.stat.rec .num{color:#f472b6}');
+          parts.push('table{width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:12px;overflow:hidden}');
+          parts.push('th{background:rgba(0,0,0,0.4);padding:12px 16px;text-align:left;font-size:0.85em;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.1)}');
+          parts.push('td{padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.9em}');
+          parts.push('tr:hover{background:rgba(255,255,255,0.03)}');
+          parts.push('.feedback{color:#9ca3af;font-size:0.85em;max-width:300px}');
+          parts.push('@media print{body{background:#fff;color:#000}th{background:#f3f4f6;color:#374151}td{border-bottom:1px solid #e5e7eb}}');
+        } else {
+          parts.push('body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:20px;color:#222}');
+          parts.push('h1{text-align:center;font-size:1.8em;margin-bottom:4px}');
+          parts.push('.subtitle{text-align:center;color:#666;margin-bottom:20px;font-size:0.95em}');
+          parts.push('table{width:100%;border-collapse:collapse;margin-bottom:24px}');
+          parts.push('th{background:#f3f4f6;padding:8px 12px;text-align:left;font-size:0.8em;color:#374151;border:1px solid #e5e7eb}');
+          parts.push('td{padding:6px 12px;border:1px solid #e5e7eb;font-size:0.85em}');
+          parts.push('.feedback{color:#666;font-size:0.85em;max-width:300px}');
+          parts.push('@media print{@page{size:A4 landscape;margin:15mm}}');
+        }
+        parts.push('.score{display:inline-block;padding:2px 10px;border-radius:20px;font-weight:bold;font-size:0.85em;color:#fff}');
+        parts.push('.s5{background:linear-gradient(135deg,#10b981,#059669)}.s4{background:linear-gradient(135deg,#3b82f6,#2563eb)}');
+        parts.push('.s3{background:linear-gradient(135deg,#f59e0b,#d97706)}.s2{background:linear-gradient(135deg,#ef4444,#dc2626)}');
+        parts.push('.s1{background:linear-gradient(135deg,#6b7280,#4b5563)}.rec-badge{color:#f472b6;margin-left:6px}');
+        parts.push('.section{margin-top:32px;padding-top:16px;border-top:1px solid ' + (isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb') + '}');
+        parts.push('.section h2{font-size:1.3em;color:#c084fc;margin-bottom:16px}');
+        parts.push('@media(max-width:768px){table{display:block;overflow-x:auto}td,th{white-space:nowrap;padding:8px 10px}}');
+        parts.push(ct('style') + ct('head') + '<body>');
+        parts.push('<div class="container">');
+        parts.push('<h1>PEERMUSIC' + ct('h1'));
+        parts.push('<p class="subtitle">' + sessionTitle + ' - ' + date + ' (' + songList.length + '곡)' + ct('p'));
+        if (isDark) {
+          parts.push('<div class="stats">');
+          parts.push('<div class="stat total"><div class="num">' + songList.length + ct('div') + '<div class="label">전체' + ct('div') + ct('div'));
+          parts.push('<div class="stat done"><div class="num">' + songList.filter(s=>s.점수).length + ct('div') + '<div class="label">완료' + ct('div') + ct('div'));
+          parts.push('<div class="stat rec"><div class="num">' + recommended.length + ct('div') + '<div class="label">추천' + ct('div') + ct('div'));
+          parts.push(ct('div'));
+        }
+        // 메인 테이블
+        const buildRow = (s, i) => {
+          const sc = Math.floor(parseFloat(s.점수||0));
+          const cls = sc>=5?'s5':sc>=4?'s4':sc>=3?'s3':sc>=2?'s2':'s1';
+          const rec = parseFloat(s.점수||0)>=4 ? '<span class="rec-badge">&#10084;' + ct('span') : '';
+          const score = s.점수 ? '<span class="score ' + cls + '">' + s.점수 + ct('span') : '-';
+          return '<tr><td>' + (i+1) + ct('td') + '<td>' + (s.곡명||'') + rec + ct('td') + '<td>' + (s.저작자||'-') + ct('td') + '<td>' + (s.OP명||'-') + ct('td') + '<td>' + (s.장르||'-') + ct('td') + '<td>' + score + ct('td') + '<td class="feedback">' + (s.피드백||'-') + ct('td') + ct('tr');
+        };
+        parts.push('<table><thead><tr><th>#' + ct('th') + '<th>곡명' + ct('th') + '<th>저작자' + ct('th') + '<th>OP명' + ct('th') + '<th>장르' + ct('th') + '<th>점수' + ct('th') + '<th>피드백' + ct('th') + ct('tr') + ct('thead'));
+        parts.push('<tbody>' + songList.map(buildRow).join('') + ct('tbody') + ct('table'));
+        if (recommended.length > 0) {
+          parts.push('<div class="section"><h2>추천곡 (' + recommended.length + '곡)' + ct('h2'));
+          parts.push('<table><thead><tr><th>#' + ct('th') + '<th>곡명' + ct('th') + '<th>저작자' + ct('th') + '<th>OP명' + ct('th') + '<th>장르' + ct('th') + '<th>점수' + ct('th') + '<th>피드백' + ct('th') + ct('tr') + ct('thead'));
+          parts.push('<tbody>' + recommended.map(buildRow).join('') + ct('tbody') + ct('table') + ct('div'));
+        }
+        parts.push(ct('div') + ct('body') + ct('html'));
+        return parts.join('\n');
+      };
+
+      // 반응형 HTML 내보내기
       const exportSessionHTML = (sessionOrSongs, title) => {
         const songList = sessionOrSongs.songs || sessionOrSongs;
         const sessionTitle = title || sessionOrSongs.아티스트 || 'DEMO Review';
         const date = sessionOrSongs.날짜 || new Date().toISOString().split('T')[0];
-        const recommended = songList.filter(s => parseFloat(s.점수 || 0) >= 4.0);
-        const html = `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>PEERMUSIC - ${sessionTitle}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#e5e5e5;padding:20px}
-.container{max-width:1200px;margin:0 auto}
-h1{text-align:center;font-size:2em;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:5px}
-.subtitle{text-align:center;color:#9ca3af;margin-bottom:30px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:24px}
-.stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;text-align:center}
-.stat .num{font-size:1.5em;font-weight:bold}.stat .label{font-size:0.85em;color:#9ca3af}
-.stat.total .num{color:#818cf8}.stat.done .num{color:#34d399}.stat.rec .num{color:#f472b6}
-table{width:100%;border-collapse:collapse;background:rgba(255,255,255,0.03);border-radius:12px;overflow:hidden}
-th{background:rgba(0,0,0,0.4);padding:12px 16px;text-align:left;font-size:0.85em;color:#9ca3af;border-bottom:1px solid rgba(255,255,255,0.1)}
-td{padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.9em}
-tr:hover{background:rgba(255,255,255,0.03)}
-.score{display:inline-block;padding:2px 10px;border-radius:20px;font-weight:bold;font-size:0.85em;color:#fff}
-.s5{background:linear-gradient(135deg,#10b981,#059669)}.s4{background:linear-gradient(135deg,#3b82f6,#2563eb)}
-.s3{background:linear-gradient(135deg,#f59e0b,#d97706)}.s2{background:linear-gradient(135deg,#ef4444,#dc2626)}
-.s1{background:linear-gradient(135deg,#6b7280,#4b5563)}
-.rec-badge{color:#f472b6;margin-left:6px}
-.section{margin-top:32px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1)}
-.section h2{font-size:1.3em;color:#c084fc;margin-bottom:16px}
-.feedback{color:#9ca3af;font-size:0.85em;max-width:300px}
-@media print{body{background:#fff;color:#000}th{background:#f3f4f6;color:#374151}td{border-bottom:1px solid #e5e7eb}
-.score{color:#000!important}.stat{border:1px solid #e5e7eb}}
-@media(max-width:768px){table{display:block;overflow-x:auto}td,th{white-space:nowrap;padding:8px 10px}}
-</style></head><body>
-<div class="container">
-<h1>PEERMUSIC</h1>
-<p class="subtitle">${sessionTitle} - ${date} (${songList.length}곡)</p>
-<div class="stats">
-<div class="stat total"><div class="num">${songList.length}</div><div class="label">전체</div></div>
-<div class="stat done"><div class="num">${songList.filter(s=>s.점수).length}</div><div class="label">완료</div></div>
-<div class="stat rec"><div class="num">${recommended.length}</div><div class="label">추천</div></div>
-</div>
-<table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead>
-<tbody>${songList.map((s,i) => {
-  const sc = Math.floor(parseFloat(s.점수||0));
-  const cls = sc>=5?'s5':sc>=4?'s4':sc>=3?'s3':sc>=2?'s2':'s1';
-  return `<tr><td>${i+1}</td><td>${s.곡명||''}${parseFloat(s.점수||0)>=4?'<span class="rec-badge">&#10084;</span>':''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td>${s.점수?`<span class="score ${cls}">${s.점수}</span>`:'-'}</td><td class="feedback">${s.피드백||'-'}</td></tr>`;
-}).join('')}</tbody></table>
-${recommended.length > 0 ? `<div class="section"><h2>추천곡 (4.0+)</h2><table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead><tbody>${recommended.map((s,i) => {
-  const sc = Math.floor(parseFloat(s.점수||0));
-  const cls = sc>=5?'s5':sc>=4?'s4':'s3';
-  return `<tr><td>${i+1}</td><td>${s.곡명||''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td><span class="score ${cls}">${s.점수}</span></td><td class="feedback">${s.피드백||'-'}</td></tr>`;
-}).join('')}</tbody></table></div>` : ''}
-</div></body></html>`;
+        const html = buildExportHTML(songList, sessionTitle, date, true);
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `PEERMUSIC_${sessionTitle.replace(/\s+/g,'_')}_${date}.html`;
+        link.download = 'PEERMUSIC_' + sessionTitle.replace(/\s+/g,'_') + '_' + date + '.html';
         link.click();
       };
 
@@ -2145,28 +2170,10 @@ ${recommended.length > 0 ? `<div class="section"><h2>추천곡 (4.0+)</h2><table
         const songList = sessionOrSongs.songs || sessionOrSongs;
         const sessionTitle = title || sessionOrSongs.아티스트 || 'DEMO Review';
         const date = sessionOrSongs.날짜 || new Date().toISOString().split('T')[0];
-        const recommended = songList.filter(s => parseFloat(s.점수 || 0) >= 4.0);
+        const html = buildExportHTML(songList, sessionTitle, date, false);
+        const printHtml = html.replace(ct('body') + ct('html'), '<' + 'script>window.onload=()=>{window.print();}' + ct('script') + ct('body') + ct('html'));
         const printWindow = window.open('', '_blank');
-        printWindow.document.write(`<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"><title>PEERMUSIC - ${sessionTitle}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:20px;color:#222}
-h1{text-align:center;font-size:1.8em;margin-bottom:4px}
-.subtitle{text-align:center;color:#666;margin-bottom:20px;font-size:0.95em}
-table{width:100%;border-collapse:collapse;margin-bottom:24px}
-th{background:#f3f4f6;padding:8px 12px;text-align:left;font-size:0.8em;color:#374151;border:1px solid #e5e7eb}
-td{padding:6px 12px;border:1px solid #e5e7eb;font-size:0.85em}
-.section{margin-top:24px;page-break-before:auto}
-.section h2{font-size:1.2em;color:#6366f1;margin-bottom:12px;border-bottom:2px solid #6366f1;padding-bottom:4px}
-@media print{@page{size:A4 landscape;margin:15mm}}
-</style></head><body>
-<h1>PEERMUSIC DEMO Review</h1>
-<p class="subtitle">${sessionTitle} | ${date} | ${songList.length}곡</p>
-<table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead>
-<tbody>${songList.map((s,i) => `<tr><td>${i+1}</td><td>${s.곡명||''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td>${s.점수||'-'}</td><td>${s.피드백||'-'}</td></tr>`).join('')}</tbody></table>
-${recommended.length > 0 ? `<div class="section"><h2>추천곡 (${recommended.length}곡)</h2><table><thead><tr><th>#</th><th>곡명</th><th>저작자</th><th>OP명</th><th>장르</th><th>점수</th><th>피드백</th></tr></thead><tbody>${recommended.map((s,i) => `<tr><td>${i+1}</td><td>${s.곡명||''}</td><td>${s.저작자||'-'}</td><td>${s.OP명||'-'}</td><td>${s.장르||'-'}</td><td>${s.점수}</td><td>${s.피드백||'-'}</td></tr>`).join('')}</tbody></table></div>` : ''}
-<script>window.onload=()=>{window.print();}</script>
-</body></html>`);
+        printWindow.document.write(printHtml);
         printWindow.document.close();
       };
 
@@ -2652,8 +2659,9 @@ C:\\Users\\demo\\Wavecandy\\JETSKI.mp3`} />
       // ★★★ 아카이브 화면 (저장된 세션 관리, 검색, 내보내기) ★★★
       const ArchiveView = () => {
         const filtered = searchArchive(archiveSearch);
-        const [expandedId, setExpandedId] = useState(null);
-        const jsonInputRef = useRef(null);
+        const expandedId = archiveExpandedId;
+        const setExpandedId = setArchiveExpandedId;
+        const jsonInputRef = jsonImportRef;
 
         return (
           <div className="max-w-6xl mx-auto p-4 md:p-6 fade-in">
