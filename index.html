@@ -115,14 +115,15 @@
       '데모의 퀄리티가 현저히 낮음',
       '송리드와 상이한 데모',
       '아티스트와 어울리지 않는 데모',
-      '곡은 좋으나 해당 리드와는 어울리지 않는 데모'
+      '곡은 좋으나 해당 리드와는 어울리지 않는 데모',
+      '트렌디에서 떨어지는 데모'
     ];
 
     const SCORES = ['5.0', '4.5', '4.0', '3.5', '3.0', '2.5', '2.0', '1.5', '1.0'];
 
     // 장르 프리셋 목록
     const GENRE_PRESETS = [
-      'Pop', 'K-Pop', 'House', 'Easy Listening', 'Urban', 'Synth Pop',
+      'Pop', 'K-Pop', 'J-Pop', 'J-Rock', 'House', 'Easy Listening', 'Urban', 'Synth Pop',
       'Acoustic', 'Ballad', 'K-Ballad', 'R&B', 'Hip-Hop', 'Rock',
       'Dance', 'EDM', 'Electronic', 'Tropical', 'Trap',
       'Jazz', 'Soul', 'Funk', 'Disco', 'Reggae', 'Country',
@@ -130,7 +131,7 @@
       'City Pop', 'Future Bass', 'Dubstep',
       'Chill', 'Afrobeat', 'Latin', 'Reggaeton',
       'Retro', 'Hyper', 'Mixx Pop', 'Garage', '2Step', 'OST',
-      'J-Pop', 'J-Rock', 'Band'
+      "2000's", 'Band'
     ];
 
     // 장르 키워드 목록 (자동 분류용)
@@ -218,6 +219,10 @@
       'mbarocci@peermusic.com': 'PM.ITALY',
       'dyeguitar@hanmail.net': 'LDW',
       'jongmuyng@nate.com': 'ZOMAY',
+      // 신규 추가 (2026-02-10)
+      'min_ho0923@hanmail.net': 'JMH',
+      'surpass84@naver.com': 'hiir',
+      'ent102sy@naver.com': 'JSY',
     };
 
     // 이메일 → 저작자 매핑 (자동 저작자 입력용)
@@ -231,6 +236,10 @@
       'eogh8282@naver.com': '진대호',
       'dyeguitar@hanmail.net': '이동우',
       'jongmuyng@nate.com': 'ZOMAY, MIND182, MAYFLY',
+      // 신규 추가 (2026-02-10)
+      'min_ho0923@hanmail.net': '진민호(Markus.J)',
+      'surpass84@naver.com': 'hiir',
+      'ent102sy@naver.com': 'JSY',
     };
 
     // 작가명 → OP명 매핑 (확장됨)
@@ -702,6 +711,24 @@
         songName = demoBpmMatch[2].trim();
         bpm = demoBpmMatch[3];
         opName = getOPFromComposer(composer) || getOPFromEmail(email) || folderOP || '';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-6-3: 작가명_곡명_BPM숫자_장르 형식 ==========
+      // 예: Markus.J_Satellite_180_ROCK_이메일.mp3 → 이메일은 이미 제거됨
+      // 예: hiir_청춘에게 KISS_167_rock_이메일.mp3 → 이메일은 이미 제거됨
+      const composerSongBpmGenrePattern = /^([A-Za-z.]+|[가-힣]+)_(.+?)_(\d+)_([A-Za-z\s]+)$/i;
+      const composerSongBpmGenreMatch = nameWithoutExt.match(composerSongBpmGenrePattern);
+      if (composerSongBpmGenreMatch) {
+        const potentialComposer = composerSongBpmGenreMatch[1].trim();
+        songName = composerSongBpmGenreMatch[2].trim();
+        bpm = composerSongBpmGenreMatch[3];
+        genre = composerSongBpmGenreMatch[4].trim();
+
+        // 이메일 기반 저작자 정보가 있으면 우선 사용
+        composer = EMAIL_TO_COMPOSER[email] || potentialComposer;
+        opName = getOPFromEmail(email) || getOPFromComposer(composer) || folderOP || '';
+
         return { songName, composer, opName, email, genre, bpm };
       }
 
