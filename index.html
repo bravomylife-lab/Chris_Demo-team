@@ -223,6 +223,8 @@
       'min_ho0923@hanmail.net': 'JMH',
       'surpass84@naver.com': 'hiir',
       'ent102sy@naver.com': 'JSY',
+      'seanalexandermusic@gmail.com': 'SA',
+      'momo@soundgraphics.net': 'SG',
     };
 
     // 이메일 → 저작자 매핑 (자동 저작자 입력용)
@@ -729,6 +731,20 @@
         composer = EMAIL_TO_COMPOSER[email] || potentialComposer;
         opName = getOPFromEmail(email) || getOPFromComposer(composer) || folderOP || '';
 
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-6-4: 곡명 - Gender (저작자들) 장르 BPM숫자 형식 ==========
+      // 예: THAT QUEEN - Female (Darren Ellis Smith, AVENUE 52) Kpop, Pop 118 BPM.mp3
+      // 예: Siren - Female (DAINASAURS, AVENUE 52) Uptempo Pop, Synthwave 142bpm.mp3
+      const genderComposerPattern = /^(.+?)\s*-\s*(?:Female|Male|Mixed|Duet)\s+\(([^)]+)\)\s+(.+?)\s+(\d+)\s*bpm$/i;
+      const genderComposerMatch = nameWithoutExt.match(genderComposerPattern);
+      if (genderComposerMatch) {
+        songName = genderComposerMatch[1].trim();
+        composer = genderComposerMatch[2].trim();
+        genre = genderComposerMatch[3].trim();
+        bpm = genderComposerMatch[4];
+        opName = getOPFromEmail(email) || getOPFromComposer(composer) || folderOP || '';
         return { songName, composer, opName, email, genre, bpm };
       }
 
@@ -1254,7 +1270,26 @@
       if (!opName) {
         opName = getOPFromEmail(email) || folderOP || '';
       }
-      composer = composerHint || '';
+
+      // ★★★ 저작자 정보 최대한 채우기 (절대 빈 값으로 SKIP 금지) ★★★
+      // 1. composerHint (폴더 경로 기반)
+      // 2. 이메일 기반 저작자 매핑
+      // 3. 파일명에서 괄호 안 인물명 추출
+      if (!composer) {
+        composer = composerHint || '';
+      }
+      if (!composer && email && email !== '대표님 전달 DEMO') {
+        composer = EMAIL_TO_COMPOSER[email] || '';
+      }
+      if (!composer) {
+        // 괄호 안에서 인물명 추출 시도: (작가명), [작가명]
+        const parenNames = nameWithoutExt.match(/\(([^)]+)\)/g);
+        if (parenNames) {
+          const candidates = parenNames.map(p => p.replace(/[()]/g, '').trim())
+            .filter(n => n.length >= 2 && !/demo|ver|mix|inst|ar|mr|remix/i.test(n) && !/^\d+$/.test(n));
+          if (candidates.length > 0) composer = candidates.join(', ');
+        }
+      }
 
       // ★★★ 최종 안전장치: 한글 이름이 제목에 절대 들어가지 않도록 ★★★
       // 한글 2-4자로 시작하는 경우 → 작곡가로 분리
@@ -1428,8 +1463,21 @@ writers CC, Ron, JJ
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // 섹션 헤더 스킵 (타이틀, 수록성, Metadata, Link, WRITERS DETAILS 등)
-        if (/^(타이틀|수록성|수록곡|\(타이틀\)|\(수록성\)|Metadata|Link:|WRITERS DETAILS:|##?\s)/i.test(line)) {
+        // 섹션 헤더 스킵 (타이틀, 수록성, Link, WRITERS DETAILS 등)
+        if (/^(타이틀|수록성|수록곡|\(타이틀\)|\(수록성\)|Link:|WRITERS DETAILS:|##?\s)/i.test(line)) {
+          continue;
+        }
+
+        // ★★★ Metadata 줄 감지 → GL OP명 자동 설정 ★★★
+        // GL Music에서 온 크레딧은 "곡명 → Metadata → Composer 정보" 형식
+        if (/^Metadata$/i.test(line)) {
+          if (currentSong) {
+            sgOpNames[currentSong.toLowerCase()] = 'GL';
+          }
+          continue;
+        }
+        // SG 섹션 헤더 스킵: [ 01 New Song ], [ 02 Stock ] 등
+        if (/^\[\s*\d+\s+[^\]]+\]$/.test(line)) {
           continue;
         }
 
@@ -1507,7 +1555,9 @@ writers CC, Ron, JJ
 
         // 패턴 0-2: 번호 : 곡명 : 저작자 : 퍼블리셔 형식 (SoundGraphics)
         // 예: "1 : Wake up Dreamers (J) : oni/YUUKI SANO/Tomoki Tamatani : J-Pub (SG)/KIMONO"
-        const sgPattern = /^(\d+)\s*:\s*(.+?)\s*:\s*(.+?)\s*:\s*(.+)$/;
+        // 예: "*1 : Smash That : Talk Like Tigers/Lee Yeyoung : DWB Music Ltd/DWB Music Ltd"
+        // ★ 번호 앞에 * (별표/추천 표시)가 있을 수 있음
+        const sgPattern = /^\*?(\d+)\s*:\s*(.+?)\s*:\s*(.+?)\s*:\s*(.+)$/;
         const sgMatch = line.match(sgPattern);
         if (sgMatch) {
           const songName = sgMatch[2].trim();
@@ -1760,7 +1810,13 @@ writers CC, Ron, JJ
       const handlePathPaste = (pathText) => {
         if (!pathText.trim()) { alert('경로를 입력해주세요.'); return null; }
         const lines = pathText.split('\n').map(l => l.trim().replace(/^["']+|["']+$/g, '').trim()).filter(l => l);
-        const audioLines = lines.filter(l => /\.(mp3|wav|m4a|flac|aiff)$/i.test(l));
+        const audioLines = lines.filter(l => {
+          if (!/\.(mp3|wav|m4a|flac|aiff)$/i.test(l)) return false;
+          // ★★★ 맥 숨김 파일 완전 제외 (._파일명.mp3 형식) ★★★
+          const fname = l.replace(/\\/g, '/').split('/').pop() || l;
+          if (fname.startsWith('._')) return false;
+          return true;
+        });
         if (audioLines.length === 0) { alert('음원 파일 경로가 없습니다.\n\n지원 형식: MP3, WAV, M4A, FLAC, AIFF\n\n윈도우 탐색기에서 파일 선택 → 우클릭 → "경로로 복사"'); return null; }
 
         // 첫 번째 파일 경로에서 아티스트 추출
