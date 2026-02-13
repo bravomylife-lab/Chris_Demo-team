@@ -123,14 +123,14 @@
 
     // 장르 프리셋 목록
     const GENRE_PRESETS = [
-      'Pop', 'K-Pop', 'J-Pop', 'J-Rock', 'House', 'Easy Listening', 'Urban', 'Synth Pop',
+      'Pop', 'K-Pop', 'J-Pop', 'J-Rock', 'Hyper', 'House', 'Easy Listening', 'Urban', 'Synth Pop',
       'Acoustic', 'Ballad', 'K-Ballad', 'R&B', 'Hip-Hop', 'Rock',
       'Dance', 'EDM', 'Electronic', 'Tropical', 'Trap',
       'Jazz', 'Soul', 'Funk', 'Disco', 'Reggae', 'Country',
       'Folk', 'Alternative', 'Indie',
       'City Pop', 'Future Bass', 'Dubstep',
       'Chill', 'Afrobeat', 'Latin', 'Reggaeton',
-      'Retro', 'Hyper', 'Mixx Pop', 'Garage', '2Step', 'OST',
+      'Retro', 'Mixx Pop', 'Garage', '2Step', 'OST',
       "2000's", 'Band'
     ];
 
@@ -206,8 +206,8 @@
       'info@wavecandy.com': 'WC',
       'emma@cosmos-music.com': 'COS',
       // 추가 국제 퍼블리셔
-      'soundgraphics': 'SoundGraphics',
-      'admin@soundgraphics.co.kr': 'SoundGraphics',
+      'soundgraphics': 'SG',
+      'admin@soundgraphics.co.kr': 'SG',
       'shun@soundgraphics.net': 'SG',
       // 신규 매핑
       'jty9142@gmail.com': 'JYT',
@@ -225,6 +225,10 @@
       'ent102sy@naver.com': 'JSY',
       'seanalexandermusic@gmail.com': 'SA',
       'momo@soundgraphics.net': 'SG',
+      'sigurd.stage@glmusic.dk': 'GL',
+      'chris@chriswahle.com': 'CW',
+      'nramirez@peermusic.com': 'PM.US',
+      'kertu@faarmusic.com': 'FAAR.M',
     };
 
     // 이메일 → 저작자 매핑 (자동 저작자 입력용)
@@ -375,6 +379,11 @@
           return value;
         }
       }
+
+      // glmusic 도메인이면 무조건 GL
+      if (emailLower.includes('@glmusic.')) return 'GL';
+      // peermusic 도메인이면 이메일 기반 매핑 확인 후 기본 PM
+      if (emailLower.includes('@peermusic.com') && !EMAIL_TO_OP[emailLower]) return 'PM';
 
       // 2. 이메일 로컬파트에서 자동 추출
       // 예: audiofreaksmusic@gmail.com → audiofreak
@@ -737,13 +746,37 @@
       // ========== 패턴 0-6-4: 곡명 - Gender (저작자들) 장르 BPM숫자 형식 ==========
       // 예: THAT QUEEN - Female (Darren Ellis Smith, AVENUE 52) Kpop, Pop 118 BPM.mp3
       // 예: Siren - Female (DAINASAURS, AVENUE 52) Uptempo Pop, Synthwave 142bpm.mp3
-      const genderComposerPattern = /^(.+?)\s*-\s*(?:Female|Male|Mixed|Duet)\s+\(([^)]+)\)\s+(.+?)\s+(\d+)\s*bpm$/i;
+      const genderComposerPattern = /^(.+?)\s*-\s*(Female|Male|Mixed|Duet)\s+\(([^)]+)\)\s+(.+?)\s+(\d+)\s*bpm$/i;
       const genderComposerMatch = nameWithoutExt.match(genderComposerPattern);
       if (genderComposerMatch) {
         songName = genderComposerMatch[1].trim();
-        composer = genderComposerMatch[2].trim();
-        genre = genderComposerMatch[3].trim();
-        bpm = genderComposerMatch[4];
+        const genderInfo = genderComposerMatch[2].trim();
+        composer = genderComposerMatch[3].trim();
+        const genreInfo = genderComposerMatch[4].trim();
+        bpm = genderComposerMatch[5];
+        genre = `${genderInfo} / ${genreInfo}`;
+        opName = getOPFromEmail(email) || getOPFromComposer(composer) || folderOP || '';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-6-5: Demo- 저작자1, 저작자2 - 곡명 형식 (PM.US 스타일) ==========
+      // 예: Demo- MagoDOz, Ethan Striker - GOING UP-UP.mp3
+      const demoComposerSongPattern = /^Demo-?\s+(.+?)\s+-\s+(.+)$/i;
+      const demoComposerSongMatch = nameWithoutExt.match(demoComposerSongPattern);
+      if (demoComposerSongMatch) {
+        composer = demoComposerSongMatch[1].trim();
+        songName = demoComposerSongMatch[2].trim();
+        opName = getOPFromEmail(email) || getOPFromComposer(composer) || folderOP || '';
+        return { songName, composer, opName, email, genre, bpm };
+      }
+
+      // ========== 패턴 0-6-6: 곡명__저작자정보 형식 (JM 스타일, 이메일 제거 후 더블 언더스코어) ==========
+      // 예: BABY YOU´RE MINE__Jose Manuel Moles 50% Valentina Fassani 50% PEERMUSIC
+      const doubleUnderscorePattern = /^(.+?)__(.+)$/;
+      const doubleUnderscoreMatch = nameWithoutExt.match(doubleUnderscorePattern);
+      if (doubleUnderscoreMatch) {
+        songName = doubleUnderscoreMatch[1].trim();
+        composer = doubleUnderscoreMatch[2].trim();
         opName = getOPFromEmail(email) || getOPFromComposer(composer) || folderOP || '';
         return { songName, composer, opName, email, genre, bpm };
       }
@@ -1480,6 +1513,10 @@ writers CC, Ron, JJ
         if (/^\[\s*\d+\s+[^\]]+\]$/.test(line)) {
           continue;
         }
+        // 구분선 스킵: 단독 "-", "--", "---" 등
+        if (/^-+$/.test(line)) {
+          continue;
+        }
 
         // 패턴 0-0: MC_번호_곡명 또는 MC_번호_곡명_ver: 작사/작곡/편곡 정보
         // 예1: MC_03882_Breeze: 138BPM_Bbkey_가이드보컬 AI활용_김도경(DØK)
@@ -1812,9 +1849,9 @@ writers CC, Ron, JJ
         const lines = pathText.split('\n').map(l => l.trim().replace(/^["']+|["']+$/g, '').trim()).filter(l => l);
         const audioLines = lines.filter(l => {
           if (!/\.(mp3|wav|m4a|flac|aiff)$/i.test(l)) return false;
-          // ★★★ 맥 숨김 파일 완전 제외 (._파일명.mp3 형식) ★★★
-          const fname = l.replace(/\\/g, '/').split('/').pop() || l;
-          if (fname.startsWith('._')) return false;
+          // ★★★ 맥 숨김 파일 완전 제외 (._ 접두사 파일) ★★★
+          const fname = l.replace(/\\/g, '/').split('/').pop().replace(/^["']+|["']+$/g, '') || l;
+          if (/^\._/.test(fname)) return false;
           return true;
         });
         if (audioLines.length === 0) { alert('음원 파일 경로가 없습니다.\n\n지원 형식: MP3, WAV, M4A, FLAC, AIFF\n\n윈도우 탐색기에서 파일 선택 → 우클릭 → "경로로 복사"'); return null; }
@@ -1880,8 +1917,19 @@ writers CC, Ron, JJ
           const matchResults = { matched: 0, unmatched: [] };
           const updatedSongs = newSongs.map(song => {
             const songNameNormalized = normalizeSongName(song.곡명);
-            const matchedCredit = normalizedCredits[songNameNormalized];
-            const matchedSgOp = normalizedSgOpNames[songNameNormalized];
+            let matchedCredit = normalizedCredits[songNameNormalized];
+            let matchedSgOp = normalizedSgOpNames[songNameNormalized];
+
+            // ★★★ 정확한 매칭 실패 시 부분 매칭 시도 (한 곡도 놓치지 않기 위해) ★★★
+            if (!matchedCredit) {
+              for (const [creditKey, creditValue] of Object.entries(normalizedCredits)) {
+                if (songNameNormalized.includes(creditKey) || creditKey.includes(songNameNormalized)) {
+                  matchedCredit = creditValue;
+                  if (normalizedSgOpNames[creditKey]) matchedSgOp = normalizedSgOpNames[creditKey];
+                  break;
+                }
+              }
+            }
 
             let updatedSong = { ...song };
             if (matchedSgOp) updatedSong.OP명 = matchedSgOp;
@@ -2033,8 +2081,19 @@ writers CC, Ron, JJ
 
           updatedSongs = pendingSongs.map(song => {
             const songNameNormalized = normalizeSongName(song.곡명);
-            const matchedCredit = normalizedCredits[songNameNormalized];
-            const matchedSgOp = normalizedSgOpNames[songNameNormalized];
+            let matchedCredit = normalizedCredits[songNameNormalized];
+            let matchedSgOp = normalizedSgOpNames[songNameNormalized];
+
+            // ★★★ 정확한 매칭 실패 시 부분 매칭 시도 ★★★
+            if (!matchedCredit) {
+              for (const [creditKey, creditValue] of Object.entries(normalizedCredits)) {
+                if (songNameNormalized.includes(creditKey) || creditKey.includes(songNameNormalized)) {
+                  matchedCredit = creditValue;
+                  if (normalizedSgOpNames[creditKey]) matchedSgOp = normalizedSgOpNames[creditKey];
+                  break;
+                }
+              }
+            }
 
             console.log(`곡명 매칭 시도: "${song.곡명}" → "${songNameNormalized}" → ${matchedCredit ? '매칭 성공' : '매칭 실패'}`);
 
